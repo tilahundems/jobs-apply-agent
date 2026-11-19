@@ -1,4 +1,4 @@
-import { member, rootDb, SINGLE_TENANT_ID, withTenantTransaction } from "@et/db"
+import { member, rootDb, SINGLE_TENANT_ID, withTenantContext } from "@et/db"
 import {
   type CallHandler,
   type ExecutionContext,
@@ -38,7 +38,10 @@ export class TenantContextInterceptor implements NestInterceptor {
     }
 
     const organizationId = await this.resolveOrganizationId(request)
-    return withTenantTransaction(rootDb, organizationId, () =>
+    // Only the tenant is published here; handlers that need atomicity open
+    // their own transaction. Wrapping every request would hold a write lock
+    // for reads and scans, so two overlapping requests always conflicted.
+    return withTenantContext(rootDb, organizationId, () =>
       lastValueFrom(next.handle())
     )
   }

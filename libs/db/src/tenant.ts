@@ -7,7 +7,11 @@ import type { DatabaseTransaction } from "./locks.js"
 /** Reserved for installations that do not use organizations. */
 export const SINGLE_TENANT_ID = "__single_tenant__"
 
-type TenantContext = { organizationId: string; tx: DatabaseTransaction }
+/** `tx` is a real transaction inside one, and the plain handle otherwise. */
+type TenantContext = {
+  organizationId: string
+  tx: Database | DatabaseTransaction
+}
 const context = new AsyncLocalStorage<TenantContext>()
 
 export function currentOrganizationId() {
@@ -41,10 +45,22 @@ export function tenantClient(base: Database): Database {
 }
 
 /**
- * Every tenant operation runs inside one transaction. SQLite has no
- * session-scoped setting for row-level security, so isolation is enforced by
- * the `tenantWhere()` predicates rather than by the database.
+ * Publishes the tenant for `tenantWhere()`. SQLite has no session-scoped
+ * setting for row-level security, so isolation comes from the predicates, not
+ * from a database transaction — and opening one per request would take a write
+ * lock (BEGIN IMMEDIATE) for reads too, making any two requests conflict.
+ * Work that needs atomicity opens its own transaction through `db`.
  */
+export async function withTenantContext<T>(
+  base: Database,
+  organizationId: string,
+  work: () => Promise<T>
+): Promise<T> {
+  if (context.getStore()) throw new Error("Tenant context is already active")
+  return context.run({ organizationId, tx: base }, work)
+}
+
+/** Runs `work` in one transaction with the tenant published. */
 export async function withTenantTransaction<T>(
   base: Database,
   organizationId: string,

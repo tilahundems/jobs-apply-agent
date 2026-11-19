@@ -7,5 +7,6 @@ export {
   requiredOrganizationId,
   SINGLE_TENANT_ID,
   tenantWhere,
+  withTenantContext,
   withTenantTransaction,
 } from "./tenant.js"

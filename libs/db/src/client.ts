@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks"
 import { mkdirSync } from "node:fs"
 import { dirname } from "node:path"
 import { type Client, createClient } from "@libsql/client"
@@ -69,8 +70,10 @@ function busySafe<T extends object>(target: T): T {
       const value = Reflect.get(object, property, receiver)
       if (typeof value !== "function") return value
       if (property === "transaction") {
-        return async (...args: unknown[]) =>
-          busySafe(await value.apply(object, args))
+        // The write lock is taken when the transaction opens, so retrying this
+        // call is safe: no work has run yet.
+        return (...args: unknown[]) =>
+          retryBusy(() => value.apply(object, args))
       }
       if (typeof property === "string" && RETRIED.has(property)) {
         return (...args: unknown[]) =>
@@ -81,9 +84,51 @@ function busySafe<T extends object>(target: T): T {
   })
 }
 
+/** Marks work that already holds the write lock, so nested calls queue-free. */
+const holdingWriteLock = new AsyncLocalStorage<true>()
+
+let writeQueue: Promise<unknown> = Promise.resolve()
+
+/**
+ * SQLite allows a single writer, and libsql's pooled local client does not
+ * recover once two of its transactions race for the write lock: it keeps
+ * reporting `cannot commit transaction - SQL statements in progress`. Queueing
+ * transactions in this process means they wait instead of racing; writes from
+ * another process still surface as BUSY and are retried.
+ */
+function serialized<T>(run: () => Promise<T>): Promise<T> {
+  if (holdingWriteLock.getStore()) return run()
+  const result = writeQueue.then(
+    () => holdingWriteLock.run(true, run),
+    () => holdingWriteLock.run(true, run)
+  )
+  writeQueue = result.catch(() => undefined)
+  return result
+}
+
+/**
+ * A transaction keeps the snapshot it opened with, so a lock conflict inside
+ * one can never be retried in place: re-running the statement fails again or
+ * commits over a stale snapshot. Retrying the whole transaction is the only
+ * correct unit, which is why statements inside a transaction are left alone
+ * and the transaction call itself is wrapped instead.
+ */
+function retryTransactions<T extends object>(target: T): T {
+  return new Proxy(target, {
+    get(object, property, receiver) {
+      const value = Reflect.get(object, property, receiver)
+      if (property !== "transaction" || typeof value !== "function") {
+        return value
+      }
+      return (...args: unknown[]) =>
+        serialized(() => retryBusy(() => value.apply(object, args)))
+    },
+  })
+}
+
 const client = busySafe(base) as Client
 
-export const rootDb = drizzle(client, { schema })
+export const rootDb = retryTransactions(drizzle(client, { schema }))
 export const db = tenantClient(rootDb)
 
 export async function closeDb() {
