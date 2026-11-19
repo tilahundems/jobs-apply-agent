@@ -6,11 +6,7 @@ export function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-svh flex-col">
       <header className="border-b border-border/60">
-        <div className="mx-auto flex h-14 w-full max-w-5xl items-center gap-2 px-4 sm:px-6">
-          <span className="relative flex size-2">
-            <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-500/60" />
-            <span className="relative inline-flex size-2 rounded-full bg-emerald-500" />
-          </span>
+        <div className="mx-auto flex h-14 w-full max-w-5xl items-center px-4 sm:px-6">
           <span className="text-sm font-medium tracking-tight">
             Job apply agent
           </span>
