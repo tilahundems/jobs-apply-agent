@@ -119,6 +119,14 @@ function dateFromPhrase(value: string): Date | null {
   return null
 }
 
+/** A posting that closed cannot be applied to, so the agent stops keeping it. */
+export function isDeadlinePassed(
+  deadline: Date | null,
+  now: Date = new Date()
+): boolean {
+  return deadline !== null && deadline.getTime() < now.getTime()
+}
+
 /**
  * Finds the closing date a posting states, or null when it states none. Only
  * labelled dates count, so an event date elsewhere in the text is not mistaken

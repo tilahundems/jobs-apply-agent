@@ -17,6 +17,7 @@ export function useScanChannels() {
       const detail = [
         `${summary.added} kept`,
         `${summary.belowThreshold} below your threshold`,
+        `${summary.expired} closed`,
         `${summary.excluded} excluded`,
         `from ${summary.fetched} posts in ${summary.channels} channel(s)`,
       ].join(", ")

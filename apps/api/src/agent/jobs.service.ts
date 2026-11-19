@@ -17,6 +17,7 @@ import {
   desc,
   eq,
   inArray,
+  lt,
   max,
   or,
   type SQL,
@@ -33,7 +34,7 @@ import {
 import { apiError } from "../http/api-error.js"
 import { markdownToDocx } from "./docx.js"
 import { scoreJob } from "./match.js"
-import { parseJob } from "./parse.js"
+import { isDeadlinePassed, parseJob } from "./parse.js"
 import { tailorApplication } from "./tailor.js"
 import { fetchChannelPosts } from "./telegram-source.js"
 
@@ -43,6 +44,8 @@ export type IngestSummary = {
   added: number
   belowThreshold: number
   excluded: number
+  /** Postings dropped or skipped because their deadline has passed. */
+  expired: number
   warnings: string[]
 }
 
@@ -412,8 +415,22 @@ export class JobsService {
       added: 0,
       belowThreshold: 0,
       excluded: 0,
+      expired: 0,
       warnings: [],
     }
+
+    // A posting that closed is not a lead. Clear the stored ones before reading
+    // channels again, so the list never keeps work that cannot be applied to.
+    const dropped = await db
+      .delete(jobPost)
+      .where(
+        and(
+          tenantWhere(jobPost.organizationId),
+          lt(jobPost.deadlineAt, new Date())
+        )
+      )
+      .returning({ id: jobPost.id })
+    summary.expired = dropped.length
 
     const existing = new Set(
       (
@@ -436,6 +453,11 @@ export class JobsService {
         if (existing.has(post.key)) continue
 
         const parsed = parseJob(post.text)
+        if (isDeadlinePassed(parsed.deadlineAt)) {
+          summary.expired += 1
+          continue
+        }
+
         const match = scoreJob(post.text, parsed, {
           skills: profile.skills,
           preferences: profile.preferences,

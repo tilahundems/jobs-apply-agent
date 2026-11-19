@@ -37,6 +37,8 @@ export type IngestSummary = {
   added: number
   belowThreshold: number
   excluded: number
+  /** Postings dropped or skipped because their deadline has passed. */
+  expired: number
   warnings: string[]
 }
 

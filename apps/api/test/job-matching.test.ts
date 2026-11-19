@@ -2,7 +2,7 @@ import assert from "node:assert/strict"
 import { test } from "node:test"
 import type { ProfilePreferences } from "@et/db"
 import { scoreJob } from "../src/agent/match.js"
-import { parseJob } from "../src/agent/parse.js"
+import { isDeadlinePassed, parseJob } from "../src/agent/parse.js"
 import { parseChannelPage } from "../src/agent/telegram-source.js"
 
 const preferences: ProfilePreferences = {
@@ -65,6 +65,15 @@ test("reads a day-first numeric closing date", () => {
 
 test("leaves the deadline empty when the post states none", () => {
   assert.equal(parseJob(strongPost).deadlineAt, null)
+})
+
+test("treats a deadline that has passed as closed", () => {
+  const yesterday = new Date(Date.now() - 86_400_000)
+  const tomorrow = new Date(Date.now() + 86_400_000)
+
+  assert.equal(isDeadlinePassed(yesterday), true)
+  assert.equal(isDeadlinePassed(tomorrow), false)
+  assert.equal(isDeadlinePassed(null), false)
 })
 
 test("blocks a posting that contains an exclusion keyword", () => {
