@@ -1,0 +1,1 @@
+ALTER TABLE `job_post` ADD `deadline_at` integer;

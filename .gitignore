@@ -1,0 +1,54 @@
+# Dependencies
+node_modules
+apps/mobile/.expo
+.pnpm-store
+.pnp.*
+
+# Build output
+dist
+build
+.output
+.tanstack
+
+# Caches
+.turbo
+.cache
+.vite
+*.tsbuildinfo
+__unconfig*
+
+# Tests
+coverage
+.nyc_output
+test-results
+playwright-report
+blob-report
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+!.env*.example
+*.local
+*.pem
+
+# Logs and debug
+logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS and editors
+.DS_Store
+Thumbs.db
+.idea
+*.swp
+*.swo
+.setup-complete
+
+# SQLite database files
+data/
+*.db
+*.db-journal

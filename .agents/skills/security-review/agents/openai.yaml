@@ -1,0 +1,5 @@
+interface:
+  display_name: "Security Review"
+  short_description: "Review a change across trust boundaries"
+policy:
+  allow_implicit_invocation: false

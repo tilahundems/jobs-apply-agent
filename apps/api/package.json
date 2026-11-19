@@ -1,0 +1,43 @@
+{
+  "name": "@et/api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch --import tsx src/main.ts",
+    "build": "tsc",
+    "seed": "tsx src/seed.ts",
+    "seed:roles": "tsx src/seed-roles.ts",
+    "start": "node dist/main.js",
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test test/*.test.ts"
+  },
+  "dependencies": {
+    "@better-auth/drizzle-adapter": "catalog:",
+    "@casl/ability": "catalog:",
+    "@et/authz": "workspace:*",
+    "@et/contracts": "workspace:*",
+    "@et/db": "workspace:*",
+    "@nestjs/common": "catalog:",
+    "@nestjs/core": "catalog:",
+    "@nestjs/platform-express": "catalog:",
+    "@nestjs/throttler": "catalog:",
+    "@prometheus-io/client": "catalog:",
+    "@thallesp/nestjs-better-auth": "catalog:",
+    "better-auth": "catalog:",
+    "docx": "catalog:",
+    "drizzle-orm": "catalog:",
+    "express": "catalog:",
+    "nestjs-pino": "catalog:",
+    "pino": "catalog:",
+    "reflect-metadata": "catalog:",
+    "rxjs": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@types/express": "catalog:",
+    "@types/node": "catalog:",
+    "tsx": "catalog:",
+    "typescript": "catalog:"
+  }
+}

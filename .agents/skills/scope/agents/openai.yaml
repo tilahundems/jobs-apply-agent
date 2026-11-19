@@ -1,0 +1,5 @@
+interface:
+  display_name: "Scope"
+  short_description: "Pick the next increment and slice it"
+policy:
+  allow_implicit_invocation: false

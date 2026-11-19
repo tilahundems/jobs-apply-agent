@@ -1,0 +1,30 @@
+{
+  "name": "job-apply-agent",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@12.3.4",
+  "scripts": {
+    "new": "node scripts/new.mjs",
+    "dev": "turbo run dev",
+    "dev:web": "turbo run dev --filter=@et/api --filter=@et/web",
+    "dev:api": "turbo run dev --filter=@et/api",
+    "build": "turbo run build",
+    "check": "biome check .",
+    "check:fix": "biome check --write .",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "test:setup": "node --test scripts/new.test.mjs",
+    "test:generated": "node scripts/generated-smoke.mjs",
+    "db:setup": "pnpm db:migrate && pnpm db:seed",
+    "db:generate": "turbo run generate --filter=@et/db",
+    "db:migrate": "turbo run migrate --filter=@et/db",
+    "db:seed": "turbo run seed --filter=@et/api",
+    "db:studio": "turbo run studio --filter=@et/db",
+    "test:integration": "pnpm build && node libs/db/scripts/test-database.mjs",
+    "test:e2e": "pnpm build && node libs/db/scripts/test-database.mjs e2e"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "catalog:",
+    "turbo": "catalog:"
+  }
+}

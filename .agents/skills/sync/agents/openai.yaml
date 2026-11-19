@@ -1,0 +1,4 @@
+interface:
+  display_name: "Sync"
+  short_description: "Refresh durable project knowledge"
+  default_prompt: "Check whether this completed change made repository guidance or scope status stale, and update only proven stale lines."

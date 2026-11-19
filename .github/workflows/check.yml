@@ -1,0 +1,51 @@
+name: Checks
+on:
+  push:
+    branches: [main]
+  pull_request:
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_FILE: data/test.db
+      BETTER_AUTH_SECRET: integration-test-secret-at-least-32-characters
+      BETTER_AUTH_URL: http://localhost:4000
+      WEB_ORIGIN: http://localhost:3000
+      API_URL: http://localhost:4000
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.3.4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm test:setup
+      # Builds once; the integration and e2e scripts reuse turbo's cached build.
+      - run: pnpm build
+      - run: pnpm test:integration
+      - run: pnpm --filter @et/web exec playwright install --with-deps chromium
+      - run: pnpm test:e2e
+
+  # Optional features are marked across the source tree, so any change can
+  # break a generated project. This job runs beside the main checks.
+  generated:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.3.4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm test:generated

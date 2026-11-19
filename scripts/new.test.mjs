@@ -1,0 +1,180 @@
+import assert from "node:assert/strict"
+import {
+  cpSync,
+  existsSync,
+  globSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+} from "node:fs"
+import { tmpdir } from "node:os"
+import { resolve } from "node:path"
+import process from "node:process"
+import { test } from "node:test"
+import { stripFeatureMarkers } from "./new.mjs"
+
+const sourceRoot = resolve(import.meta.dirname, "..")
+const paths = [
+  ".env.example",
+  "package.json",
+  "README.md",
+  "docs",
+  "turbo.json",
+  "pnpm-workspace.yaml",
+  "apps/mobile",
+  "apps/api/package.json",
+  "apps/api/src",
+  "apps/api/test",
+  "apps/web/src",
+  "libs/contracts/src/index.ts",
+  "libs/db/src/schema.ts",
+  "libs/db/scripts/test-database.mjs",
+]
+
+const all = {
+  auditLogging: true,
+  apiDocs: true,
+  payment: true,
+  i18n: true,
+  multiTenancy: true,
+  mobile: true,
+}
+const none = Object.fromEntries(Object.keys(all).map((key) => [key, false]))
+
+async function generateWith(features, check) {
+  const target = mkdtempSync(resolve(tmpdir(), "et-new-test-"))
+  for (const path of paths)
+    cpSync(resolve(sourceRoot, path), resolve(target, path), {
+      recursive: true,
+    })
+  rmSync(resolve(target, "apps/mobile/.env"), { force: true })
+  rmSync(resolve(target, "apps/mobile/.env.local"), { force: true })
+  const previous = process.cwd()
+  try {
+    process.chdir(target)
+    cpSync(resolve(target, ".env.example"), resolve(target, ".env"))
+    const { saveFeatureFlags, selectFeatures, updateMobileIdentity } =
+      await import(`./new.mjs?case=${Math.random()}`)
+    saveFeatureFlags(features)
+    selectFeatures(features)
+    if (features.mobile) updateMobileIdentity("Test App", "test-app")
+  } finally {
+    process.chdir(previous)
+  }
+  const read = (path) => readFileSync(resolve(target, path), "utf8")
+  const has = (path) => existsSync(resolve(target, path))
+  const files = globSync("**/*", { cwd: target, withFileTypes: true })
+    .filter((entry) => entry.isFile())
+    .map((entry) => resolve(entry.parentPath, entry.name))
+  try {
+    await check({ read, has, files })
+  } finally {
+    rmSync(target, { recursive: true, force: true })
+  }
+}
+
+test("markers drop removed features and unmark kept ones", () => {
+  const source = [
+    "keep()",
+    'import { A } from "./a" // feature:a',
+    "<Select /> {/* feature:b */}",
+    "# feature:a:start",
+    "A=1",
+    "# feature:a:end",
+    "<!-- feature:b:start -->",
+    "## B",
+    "<!-- feature:b:end -->",
+    "every line marked `feature:<name>`",
+  ].join("\n")
+  assert.equal(
+    stripFeatureMarkers(source, new Set(["a"])),
+    ["keep()", "<Select />", "## B", "every line marked `feature:<name>`"].join(
+      "\n"
+    )
+  )
+})
+
+test("including everything keeps each feature and leaves no markers", async () => {
+  await generateWith(all, ({ read, has, files }) => {
+    for (const path of [
+      "apps/api/src/audit/audit.module.ts",
+      "apps/web/src/features/audit/audit-table.tsx",
+      "apps/api/src/http/openapi.ts",
+      "apps/api/src/payments/telebirr/telebirr.module.ts",
+      "apps/web/src/features/i18n/language-select.tsx",
+      "apps/mobile/app.json",
+      "apps/mobile/.env",
+    ])
+      assert.ok(has(path), path)
+    for (const file of files)
+      assert.doesNotMatch(readFileSync(file, "utf8"), /feature:\w/, file)
+    assert.match(read("apps/api/src/features.ts"), /AuditModule,\n/)
+    assert.match(read(".env"), /^MOBILE_SCHEME=app-test-app$/m)
+    assert.ok(read("README.md").includes("(docs/payments.md)"))
+    assert.ok(read("README.md").includes("pnpm dev:mobile"))
+    assert.ok(has("docs/audit.md"))
+  })
+})
+
+test("removing everything deletes each feature and its references", async () => {
+  await generateWith(none, ({ read, has, files }) => {
+    for (const path of [
+      "apps/api/src/audit",
+      "apps/web/src/features/audit",
+      "apps/web/src/routes/_main/audit-logs",
+      "apps/api/src/http/openapi.ts",
+      "apps/api/src/payments",
+      "apps/api/test/telebirr.test.ts",
+      "apps/web/src/features/i18n/language-select.tsx",
+      "apps/mobile",
+    ])
+      assert.ok(!has(path), path)
+    // Kept: logging, metrics, rate limiting and notifications.
+    for (const path of [
+      "apps/api/src/observability/metrics/metrics.service.ts",
+      "apps/api/src/http/rate-limit.module.ts",
+      "apps/api/src/notifications/notifications.module.ts",
+      "apps/web/src/features/notifications/notification-bell.tsx",
+      "apps/web/src/features/i18n/i18n-provider.tsx",
+    ])
+      assert.ok(has(path), path)
+    assert.match(
+      read("apps/web/src/features/i18n/i18n-provider.tsx"),
+      /English-only/
+    )
+
+    const forbidden =
+      /AuditModule|AuditService|\/audit-logs|features\/audit|openapi|swagger|scalar|telebirr|PAYMENT_BASE_URL|LanguageSelect|features\/i18n\/language|\bexpo\b|MOBILE_SCHEME|dev:mobile|feature:\w/i
+    // The route tree is regenerated by the next typecheck, dev or build run.
+    for (const file of files.filter(
+      (file) => !file.endsWith("routeTree.gen.ts")
+    ))
+      assert.doesNotMatch(readFileSync(file, "utf8"), forbidden, file)
+
+    assert.doesNotMatch(read("libs/contracts/src/index.ts"), /"AuditLog"/)
+    const readme = read("README.md")
+    assert.ok(readme.includes("(docs/observability.md)"))
+    for (const doc of ["audit", "payments", "mobile"]) {
+      assert.ok(!readme.includes(`docs/${doc}.md`), doc)
+      assert.ok(!has(`docs/${doc}.md`), doc)
+    }
+  })
+})
+
+test("tenancy writes API and web flags with owner and app URLs", async () => {
+  await generateWith(all, ({ read }) => {
+    const env = read(".env")
+    assert.match(env, /^MULTI_TENANCY=true$/m)
+    assert.match(env, /^VITE_MULTI_TENANCY=true$/m)
+    assert.match(env, /^MIGRATION_DATABASE_URL=postgres:\/\/et:et@/m)
+    assert.match(env, /^DATABASE_URL=postgres:\/\/et_app:[\w-]{40,}@/m)
+    assert.match(
+      read(".env.example"),
+      /^DATABASE_URL=postgres:\/\/et_app:replace-with-a-secret@/m
+    )
+  })
+  await generateWith(none, ({ read }) => {
+    assert.match(read(".env"), /^MULTI_TENANCY=false$/m)
+    assert.doesNotMatch(read(".env"), /^MIGRATION_DATABASE_URL=/m)
+  })
+})
