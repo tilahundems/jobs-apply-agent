@@ -26,6 +26,12 @@ const parsed = z
   .object({
     /** SQLite file, relative to the repository root. */
     DATABASE_FILE: z.string().min(1).default("data/job-apply-agent.db"),
+    /**
+     * Hosted libSQL (Turso) endpoint. When set, the file above is ignored, so
+     * the app survives a host that wipes its disk between deploys.
+     */
+    TURSO_DATABASE_URL: z.string().min(1).default(""),
+    TURSO_AUTH_TOKEN: z.string().default(""),
     MULTI_TENANCY: z
       .enum(["true", "false"])
       .default("false")
@@ -46,3 +52,6 @@ export const env = {
 export const databaseFile = isAbsolute(env.DATABASE_FILE)
   ? env.DATABASE_FILE
   : resolve(env.rootDir, env.DATABASE_FILE)
+
+/** A remote endpoint supersedes the local file, so the same build runs both ways. */
+export const remoteDatabaseUrl = env.TURSO_DATABASE_URL

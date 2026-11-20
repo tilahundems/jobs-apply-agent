@@ -4,25 +4,29 @@ import { dirname } from "node:path"
 import { type Client, createClient } from "@libsql/client"
 import { drizzle } from "drizzle-orm/libsql"
 
-import { databaseFile } from "./env.js"
+import { databaseFile, env, remoteDatabaseUrl } from "./env.js"
 import * as schema from "./schema.js"
 import { tenantClient } from "./tenant.js"
 
-mkdirSync(dirname(databaseFile), { recursive: true })
+if (!remoteDatabaseUrl) mkdirSync(dirname(databaseFile), { recursive: true })
 
-const base = createClient({ url: `file:${databaseFile}` })
+const base = createClient({
+  url: remoteDatabaseUrl || `file:${databaseFile}`,
+  authToken: remoteDatabaseUrl ? env.TURSO_AUTH_TOKEN : undefined,
+})
 
 // The default rollback journal makes a write wait for, and a reader fail
 // against, whatever else is mid-flight: a channel scan writing for a minute
 // while the UI polls is enough to surface SQLITE_BUSY as a spurious conflict.
 // WAL is recorded in the file header, so switching once is enough and readers
-// then continue during a write.
-for (const pragma of [
-  "PRAGMA journal_mode = WAL",
-  "PRAGMA synchronous = NORMAL",
-]) {
-  await base.execute(pragma)
-}
+// then continue during a write. A hosted database manages its own storage.
+if (!remoteDatabaseUrl)
+  for (const pragma of [
+    "PRAGMA journal_mode = WAL",
+    "PRAGMA synchronous = NORMAL",
+  ]) {
+    await base.execute(pragma)
+  }
 
 /** Attempts per statement before a lock conflict is reported to the caller (~6s of waiting). */
 const BUSY_RETRIES = 8
@@ -135,5 +139,5 @@ export async function closeDb() {
   client.close()
 }
 
-export const databaseUrl = `file:${databaseFile}`
+export const databaseUrl = remoteDatabaseUrl || `file:${databaseFile}`
 export type Database = typeof rootDb
