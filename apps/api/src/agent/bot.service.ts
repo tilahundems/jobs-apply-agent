@@ -157,6 +157,7 @@ export class BotService implements OnModuleDestroy {
     this.stopped = false
     this.logger.log("Listening for commands in the authorized chat.")
     void this.forgetOldMessages()
+    void this.publishMenuButton()
     void this.loop()
   }
 
@@ -267,6 +268,7 @@ export class BotService implements OnModuleDestroy {
       case "start":
       case "help":
         await this.reply(chatId, HELP, [], undefined, true)
+        await this.sendOpenApp(chatId)
         return
       case "closing":
         return await this.sendClosing(chatId)
@@ -280,6 +282,8 @@ export class BotService implements OnModuleDestroy {
         return await this.sendScan(chatId)
       case "clear":
         return await this.sendClear(chatId)
+      case "app":
+        return await this.sendOpenApp(chatId)
       default:
         await this.reply(
           chatId,
@@ -404,6 +408,40 @@ export class BotService implements OnModuleDestroy {
       lines.push(`⚠️ ${escapeHtml(warning)}`)
     }
     await this.reply(chatId, lines.join("\n"))
+  }
+
+  /**
+   * Puts the web app behind the persistent menu button beside the chat box, so
+   * the full console is one tap away from any chat.
+   */
+  private async publishMenuButton() {
+    const url = env.TELEGRAM_WEBAPP_URL
+    if (!url) return
+    await this.call("setChatMenuButton", {
+      menu_button: {
+        type: "web_app",
+        text: "Open app",
+        web_app: { url },
+      },
+    }).catch((error) =>
+      this.logger.warn(`Menu button unchanged: ${describe(error)}`)
+    )
+  }
+
+  /** A tappable card that opens the mini app inside Telegram. */
+  private async sendOpenApp(chatId: number) {
+    const url = env.TELEGRAM_WEBAPP_URL
+    if (!url) return
+    await this.call("sendMessage", {
+      chat_id: chatId,
+      text: "Open the full console inside Telegram:",
+      reply_markup: {
+        inline_keyboard: [[{ text: "Open app", web_app: { url } }]],
+      },
+    }).then(
+      () => undefined,
+      (error) => this.logger.warn(`Open app button failed: ${describe(error)}`)
+    )
   }
 
   /** Deletes what this bot posted here, so a long chat can start clean. */
@@ -539,7 +577,8 @@ export class BotService implements OnModuleDestroy {
 /** The persistent keyboard, sent with /start and /help. */
 const MENU = [
   [{ text: "Postings" }, { text: "Closing soon" }],
-  [{ text: "Scan" }, { text: "Clear" }],
+  [{ text: "Open app" }, { text: "Scan" }],
+  [{ text: "Clear" }],
 ]
 
 /** Keyboard labels are plain text; map them to the commands they stand for. */
@@ -554,6 +593,8 @@ export function menuCommand(text: string) {
     "scan now": "scan",
     clear: "clear",
     "clear chat": "clear",
+    "open app": "app",
+    app: "app",
   }
   const command = map[key]
   return command ? { command, args: "" } : null
@@ -568,6 +609,7 @@ const HELP = [
   "/applied &lt;id&gt; — mark it applied (stops reminders)",
   "/scan — read your channels again",
   "/clear — delete this bot's messages here",
+  "/app — open the full console inside Telegram",
 ].join("\n")
 
 const short = (title: string | null) =>

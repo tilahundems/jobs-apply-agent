@@ -36,6 +36,11 @@ const schema = z.object({
    * chat is always allowed. Every allowed chat sees the same postings.
    */
   TELEGRAM_ALLOWED_CHAT_IDS: z.string().default(""),
+  /**
+   * Public HTTPS address of the web app, used for the Telegram mini app. A
+   * tunnel to the local dev server is enough. Empty hides the Open app button.
+   */
+  TELEGRAM_WEBAPP_URL: z.string().default(""),
   /** Warn this many days before a posting closes. */
   DEADLINE_REMINDER_DAYS: z.coerce.number().int().min(0).max(30).default(3),
   /** Minutes between closing-date checks. 0 disables the background loop. */

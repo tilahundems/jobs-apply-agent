@@ -18,7 +18,10 @@ export const auth = betterAuth({
   secret: env.BETTER_AUTH_SECRET,
   baseURL: env.BETTER_AUTH_URL,
   basePath: "/api/v1/auth",
-  trustedOrigins: [env.WEB_ORIGIN],
+  // The mini app loads the same web build from another origin.
+  trustedOrigins: [env.WEB_ORIGIN, env.TELEGRAM_WEBAPP_URL].filter(
+    (origin) => origin.length > 0
+  ),
   rateLimit: { enabled: true },
   database: drizzleAdapter(db, {
     provider: "sqlite",
