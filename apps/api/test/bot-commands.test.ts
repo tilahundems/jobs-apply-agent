@@ -74,6 +74,8 @@ test("lists a posting with its score and closing day, escaped for HTML", () => {
   assert.match(line, /Backend &lt;Engineer&gt; &amp; Platform/)
   assert.match(line, /Acme Systems/)
   assert.match(line, /84%/)
+  // Numbered lines let the button under each one carry the same number.
+  assert.match(formatJobLine(job, now, 7), /^7\. /)
   assert.match(line, /closes today/)
   // An applied posting is marked so the list cannot be misread.
   assert.match(

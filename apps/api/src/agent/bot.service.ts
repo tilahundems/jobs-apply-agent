@@ -55,8 +55,11 @@ export function parseCommand(text: string) {
   return command ? { command, args: rest.join(" ") } : null
 }
 
-/** A posting as one line: title, company, score, and when it closes. */
-export function formatJobLine(job: JobRow, now = new Date()) {
+/**
+ * A posting as one line: title, company, score, and when it closes. A number
+ * is shown when it appears so its buttons can carry the same number.
+ */
+export function formatJobLine(job: JobRow, now = new Date(), number?: number) {
   const when =
     job.deadlineAt === null
       ? "no deadline"
@@ -68,7 +71,8 @@ export function formatJobLine(job: JobRow, now = new Date()) {
         )
   const where = job.company ? ` · ${escapeHtml(job.company)}` : ""
   const status = job.status === "new" ? "" : ` (${escapeHtml(job.status)})`
-  return `• <b>${escapeHtml(job.title ?? "Untitled posting")}</b>${where} — ${job.score}% · ${when}${status}`
+  const lead = number === undefined ? "•" : `${number}.`
+  return `${lead} <b>${escapeHtml(job.title ?? "Untitled posting")}</b>${where} — ${job.score}% · ${when}${status}`
 }
 
 /** One posting in full, with the facts needed to decide. */
@@ -244,7 +248,7 @@ export class BotService implements OnModuleDestroy {
         await this.reply(
           chatId,
           job ? formatJobCard(job) : "No posting matches that id.",
-          job ? [buttonsFor(job)] : []
+          job ? [cardButtons(job)] : []
         )
       }
       if (action === "jobs") {
@@ -356,13 +360,17 @@ export class BotService implements OnModuleDestroy {
       .offset((page - 1) * PAGE_SIZE)
 
     const now = new Date()
+    const first = (page - 1) * PAGE_SIZE + 1
     await this.reply(
       chatId,
       [
         `<b>Postings</b> · ${pageLabel(page, pages, total)}`,
-        ...rows.map((job) => formatJobLine(job, now)),
+        ...rows.map((job, index) => formatJobLine(job, now, first + index)),
       ].join("\n"),
-      [...rows.map((job) => buttonsFor(job)), navRow(page, pages)],
+      [
+        ...rows.map((job, index) => openButton(job, first + index)),
+        navRow(page, pages),
+      ],
       editMessageId
     )
   }
@@ -381,7 +389,7 @@ export class BotService implements OnModuleDestroy {
       await this.reply(chatId, "No posting matches that id.")
       return
     }
-    await this.reply(chatId, formatJobCard(job), [buttonsFor(job)])
+    await this.reply(chatId, formatJobCard(job), [cardButtons(job)])
   }
 
   private async sendApplied(chatId: number, args: string) {
@@ -615,12 +623,20 @@ const HELP = [
 const short = (title: string | null) =>
   (title ?? "posting").split(/\s+/).slice(0, 3).join(" ").slice(0, 20)
 
-function buttonsFor(job: JobRow): Button[] {
-  // Details always exists, so a posting without a channel link still has
-  // something to tap.
+/** One button per posting, named like its line, opening the full card. */
+function openButton(job: JobRow, number: number): Button[] {
+  return [
+    {
+      text: `${number} ${short(job.title)}`,
+      callback_data: `view:${job.id}`,
+    },
+  ]
+}
+
+/** The card's own actions: read it, then open the post or mark it applied. */
+function cardButtons(job: JobRow): Button[] {
   const buttons: Button[] = []
-  if (job.url) buttons.push({ text: "Open", url: job.url })
-  buttons.push({ text: "Details", callback_data: `view:${job.id}` })
+  if (job.url) buttons.push({ text: "Open post", url: job.url })
   if (job.status !== "applied") {
     buttons.push({ text: "✓ Applied", callback_data: `applied:${job.id}` })
   }
