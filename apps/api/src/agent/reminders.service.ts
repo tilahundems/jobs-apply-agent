@@ -72,8 +72,16 @@ export class RemindersService {
   private readonly logger = new Logger(RemindersService.name)
   private running = false
 
+  /**
+   * Warnings go to one chat only. TELEGRAM_CHAT_ID may hold a list where the
+   * first id is the owner, so a typo there cannot break delivery.
+   */
+  private get chatId() {
+    return env.TELEGRAM_CHAT_ID.split(",")[0]?.trim() ?? ""
+  }
+
   get enabled() {
-    return Boolean(env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_CHAT_ID)
+    return Boolean(env.TELEGRAM_BOT_TOKEN && this.chatId)
   }
 
   async status() {
@@ -262,7 +270,7 @@ export class RemindersService {
 
   private async send(text: string) {
     const body = await telegramCall("sendMessage", {
-      chat_id: env.TELEGRAM_CHAT_ID,
+      chat_id: this.chatId,
       text: text.slice(0, 4_000),
       parse_mode: "HTML",
     })
@@ -273,7 +281,7 @@ export class RemindersService {
 
   private async deleteMessage(messageId: number) {
     await telegramCall("deleteMessage", {
-      chat_id: env.TELEGRAM_CHAT_ID,
+      chat_id: this.chatId,
       message_id: messageId,
     })
   }

@@ -123,7 +123,7 @@ export class BotService implements OnModuleDestroy {
   ) {}
 
   get enabled() {
-    return Boolean(env.TELEGRAM_AGENT_BOT_TOKEN && env.TELEGRAM_CHAT_ID)
+    return Boolean(env.TELEGRAM_AGENT_BOT_TOKEN && this.allowedChats().size > 0)
   }
 
   /** Every call goes to the command bot's token, never the reminder bot's. */
@@ -191,10 +191,14 @@ export class BotService implements OnModuleDestroy {
     return updates
   }
 
-  /** The owner's chat plus any extra ids in TELEGRAM_ALLOWED_CHAT_IDS. */
+  /**
+   * Every id in TELEGRAM_CHAT_ID (the owner's came first) plus any extra ids in
+   * TELEGRAM_ALLOWED_CHAT_IDS. Commands work for all of them.
+   */
   private allowedChats() {
     return new Set(
-      [env.TELEGRAM_CHAT_ID, ...env.TELEGRAM_ALLOWED_CHAT_IDS.split(",")]
+      `${env.TELEGRAM_CHAT_ID},${env.TELEGRAM_ALLOWED_CHAT_IDS}`
+        .split(",")
         .map((id) => id.trim())
         .filter(Boolean)
     )
@@ -221,6 +225,14 @@ export class BotService implements OnModuleDestroy {
         await this.reply(
           chatId,
           `Marked applied: <b>${escapeHtml(job.title ?? "posting")}</b>`
+        )
+      }
+      if (action === "view" && id) {
+        const job = await this.findJob(id)
+        await this.reply(
+          chatId,
+          job ? formatJobCard(job) : "No posting matches that id.",
+          job ? [buttonsFor(job)] : []
         )
       }
       // A button that took too long to answer must not undo the work above.
@@ -431,10 +443,13 @@ const short = (title: string | null) =>
   (title ?? "posting").split(/\s+/).slice(0, 3).join(" ").slice(0, 20)
 
 function buttonsFor(job: JobRow): Button[] {
+  // Details always exists, so a posting without a channel link still has
+  // something to tap.
   const buttons: Button[] = []
   if (job.url) buttons.push({ text: "Open", url: job.url })
+  buttons.push({ text: "Details", callback_data: `view:${job.id}` })
   if (job.status !== "applied") {
-    buttons.push({ text: "Applied", callback_data: `applied:${job.id}` })
+    buttons.push({ text: "✓ Applied", callback_data: `applied:${job.id}` })
   }
   return buttons
 }

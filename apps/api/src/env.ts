@@ -26,7 +26,10 @@ const schema = z.object({
    * one-way. Empty disables the command bot.
    */
   TELEGRAM_AGENT_BOT_TOKEN: z.string().default(""),
-  /** The owner's chat: where reminder warnings are sent. */
+  /**
+   * The owner's chat: where reminder warnings are sent. A comma-separated list
+   * is accepted; the first id gets the warnings and every id may use the bot.
+   */
   TELEGRAM_CHAT_ID: z.string().default(""),
   /**
    * Extra chats allowed to use the command bot, comma separated. The owner's
