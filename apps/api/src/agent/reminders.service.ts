@@ -79,12 +79,60 @@ export class RemindersService {
     return Boolean(env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_CHAT_ID)
   }
 
-  status() {
+  async status() {
     return {
       enabled: this.enabled,
       days: env.DEADLINE_REMINDER_DAYS,
       checkMinutes: env.DEADLINE_CHECK_MINUTES,
+      upcoming: await this.upcoming(),
     }
+  }
+
+  /** The open postings a reminder is due for, nearest closing date first. */
+  async upcoming() {
+    const now = new Date()
+    const horizon = new Date(
+      now.getTime() + env.DEADLINE_REMINDER_DAYS * DAY_MS
+    )
+    const rows = await db
+      .select({
+        id: jobPost.id,
+        title: jobPost.title,
+        company: jobPost.company,
+        deadlineAt: jobPost.deadlineAt,
+        sentAt: deadlineReminder.sentAt,
+      })
+      .from(jobPost)
+      .leftJoin(deadlineReminder, eq(deadlineReminder.jobPostId, jobPost.id))
+      .where(this.window(now, horizon))
+      .orderBy(jobPost.deadlineAt)
+      .limit(10)
+
+    return rows.flatMap((row) =>
+      row.deadlineAt
+        ? [
+            {
+              id: row.id,
+              title: row.title,
+              company: row.company,
+              deadlineAt: row.deadlineAt,
+              daysLeft: daysLeftUntil(row.deadlineAt, now),
+              reminded: row.sentAt !== null,
+            },
+          ]
+        : []
+    )
+  }
+
+  /** Postings that close inside the window and still need an answer. */
+  private window(now: Date, horizon: Date) {
+    return and(
+      tenantWhere(jobPost.organizationId),
+      isNotNull(jobPost.deadlineAt),
+      gte(jobPost.deadlineAt, now),
+      lte(jobPost.deadlineAt, horizon),
+      notInArray(jobPost.status, SETTLED_STATUSES)
+    )
   }
 
   async sendTest() {
@@ -120,16 +168,7 @@ export class RemindersService {
         })
         .from(jobPost)
         .leftJoin(deadlineReminder, eq(deadlineReminder.jobPostId, jobPost.id))
-        .where(
-          and(
-            tenantWhere(jobPost.organizationId),
-            isNotNull(jobPost.deadlineAt),
-            gte(jobPost.deadlineAt, now),
-            lte(jobPost.deadlineAt, horizon),
-            notInArray(jobPost.status, SETTLED_STATUSES),
-            isNull(deadlineReminder.id)
-          )
-        )
+        .where(and(this.window(now, horizon), isNull(deadlineReminder.id)))
 
       let sent = 0
       for (const row of rows) {

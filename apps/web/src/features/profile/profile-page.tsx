@@ -110,11 +110,29 @@ function Field({
   )
 }
 
+const closingLabel = (daysLeft: number) =>
+  daysLeft === 0
+    ? "closes today"
+    : daysLeft === 1
+      ? "closes tomorrow"
+      : `closes in ${daysLeft} days`
+
+const closingDate = (value: string) =>
+  new Intl.DateTimeFormat("en-GB", {
+    day: "numeric",
+    month: "short",
+    timeZone: "Africa/Addis_Ababa",
+  }).format(new Date(value))
+
 function DeadlineReminders() {
+  const queryClient = useQueryClient()
   const { data: status } = useSuspenseQuery(remindersQueryOptions)
   const test = useMutation({
     mutationFn: sendTestReminder,
-    onSuccess: () => toast.success("Test message sent. Check Telegram."),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["reminders"] })
+      toast.success("Test message sent. Check Telegram.")
+    },
     onError: (error: Error) => toast.error(error.message),
   })
 
@@ -124,20 +142,53 @@ function DeadlineReminders() {
       description="A Telegram message before a posting closes, so nothing expires before you apply."
     >
       {status.enabled ? (
-        <div className="flex flex-wrap items-center gap-3">
-          <p className="text-sm text-muted-foreground">
-            On. You get one message per posting, {status.days} day(s) before it
-            closes.
-          </p>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            disabled={test.isPending}
-            onClick={() => test.mutate()}
-          >
-            {test.isPending ? "Sending…" : "Send test message"}
-          </Button>
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <p className="text-sm text-muted-foreground">
+              On. One message per posting, {status.days} day(s) before it
+              closes.
+            </p>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={test.isPending}
+              onClick={() => test.mutate()}
+            >
+              {test.isPending ? "Sending…" : "Send test message"}
+            </Button>
+          </div>
+
+          {status.upcoming.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              Nothing closes in the next {status.days} day(s).
+            </p>
+          ) : (
+            <ul className="divide-y rounded-lg border">
+              {status.upcoming.map((job) => (
+                <li
+                  key={job.id}
+                  className="flex items-center justify-between gap-3 px-3 py-2 text-sm"
+                >
+                  <span className="min-w-0 truncate">
+                    <span className="font-medium">
+                      {job.title ?? "Untitled posting"}
+                    </span>
+                    {job.company ? (
+                      <span className="text-muted-foreground">
+                        {" "}
+                        · {job.company}
+                      </span>
+                    ) : null}
+                  </span>
+                  <span className="shrink-0 text-xs text-muted-foreground">
+                    {closingLabel(job.daysLeft)} · {closingDate(job.deadlineAt)}
+                    {job.reminded ? " · sent" : ""}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       ) : (
         <p className="text-sm text-muted-foreground">

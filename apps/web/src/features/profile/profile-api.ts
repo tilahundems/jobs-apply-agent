@@ -62,6 +62,14 @@ export type ReminderStatus = {
   enabled: boolean
   days: number
   checkMinutes: number
+  upcoming: Array<{
+    id: string
+    title: string | null
+    company: string | null
+    deadlineAt: string
+    daysLeft: number
+    reminded: boolean
+  }>
 }
 
 export async function getReminderStatus(): Promise<ReminderStatus> {
