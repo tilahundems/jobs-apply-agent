@@ -66,6 +66,7 @@ export type ReminderStatus = {
     id: string
     title: string | null
     company: string | null
+    url: string | null
     deadlineAt: string
     daysLeft: number
     reminded: boolean

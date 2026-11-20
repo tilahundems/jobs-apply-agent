@@ -3,8 +3,8 @@ import { test } from "node:test"
 import {
   daysLeftUntil,
   formatReminder,
-  telegramDetail,
 } from "../src/agent/reminders.service.js"
+import { telegramDetail } from "../src/agent/telegram-api.js"
 
 const now = new Date("2026-11-20T06:00:00Z")
 

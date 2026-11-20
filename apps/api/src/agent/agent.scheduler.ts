@@ -6,6 +6,7 @@ import {
   type OnModuleInit,
 } from "@nestjs/common"
 import { env } from "../env.js"
+import { BotService } from "./bot.service.js"
 import { JobsService } from "./jobs.service.js"
 import { RemindersService } from "./reminders.service.js"
 
@@ -27,7 +28,8 @@ export class AgentScheduler implements OnModuleInit, OnModuleDestroy {
 
   constructor(
     @Inject(JobsService) private readonly jobs: JobsService,
-    @Inject(RemindersService) private readonly reminders: RemindersService
+    @Inject(RemindersService) private readonly reminders: RemindersService,
+    @Inject(BotService) private readonly bot: BotService
   ) {}
 
   onModuleInit() {
@@ -50,6 +52,10 @@ export class AgentScheduler implements OnModuleInit, OnModuleDestroy {
       )
       this.reminderTimer.unref?.()
     }
+
+    // Commands answer from the same bot that sends reminders, so the agent is
+    // usable from the phone even when scanning is off.
+    this.bot.start()
   }
 
   onModuleDestroy() {

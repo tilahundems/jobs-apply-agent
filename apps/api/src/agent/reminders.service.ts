@@ -19,13 +19,11 @@ import {
 } from "drizzle-orm"
 import { env } from "../env.js"
 import { apiError } from "../http/api-error.js"
+import { escapeHtml, telegramCall } from "./telegram-api.js"
 
 const DAY_MS = 86_400_000
 /** Postings the user has already dealt with need no warning. */
 const SETTLED_STATUSES: JobStatus[] = ["applied", "dismissed", "blocked"]
-
-const escapeHtml = (value: string) =>
-  value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
 
 /** Whole days from `now` until `deadline`; 0 means it closes today. */
 export const daysLeftUntil = (deadline: Date, now: Date) =>
@@ -63,17 +61,6 @@ const closingDate = (date: Date) =>
     timeZone: "Africa/Addis_Ababa",
   }).format(date)
 
-/** Telegram's `description` is the useful half of its error body. */
-export const telegramDetail = (body: string) => {
-  try {
-    const parsed = JSON.parse(body) as { description?: unknown }
-    if (typeof parsed.description === "string") return parsed.description
-  } catch {
-    // Fall through to the raw body.
-  }
-  return body.slice(0, 200) || "no reason given"
-}
-
 /**
  * Warns over Telegram when a posting is about to close. A bot costs nothing and
  * reaches a phone, and every posting is announced once at most: the
@@ -109,6 +96,7 @@ export class RemindersService {
         id: jobPost.id,
         title: jobPost.title,
         company: jobPost.company,
+        url: jobPost.url,
         deadlineAt: jobPost.deadlineAt,
         sentAt: deadlineReminder.sentAt,
       })
@@ -125,6 +113,7 @@ export class RemindersService {
               id: row.id,
               title: row.title,
               company: row.company,
+              url: row.url,
               deadlineAt: row.deadlineAt,
               daysLeft: daysLeftUntil(row.deadlineAt, now),
               reminded: row.sentAt !== null,
@@ -272,7 +261,7 @@ export class RemindersService {
   }
 
   private async send(text: string) {
-    const body = await this.call("sendMessage", {
+    const body = await telegramCall("sendMessage", {
       chat_id: env.TELEGRAM_CHAT_ID,
       text: text.slice(0, 4_000),
       parse_mode: "HTML",
@@ -283,35 +272,10 @@ export class RemindersService {
   }
 
   private async deleteMessage(messageId: number) {
-    await this.call("deleteMessage", {
+    await telegramCall("deleteMessage", {
       chat_id: env.TELEGRAM_CHAT_ID,
       message_id: messageId,
     })
-  }
-
-  /** Calls a Bot API method and returns its parsed JSON body. */
-  private async call(method: string, payload: Record<string, unknown>) {
-    const response = await fetch(
-      `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/${method}`,
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(payload),
-        signal: AbortSignal.timeout(15_000),
-      }
-    )
-    const raw = await response.text().catch(() => "")
-    if (!response.ok) {
-      throw apiError(
-        HttpStatus.BAD_GATEWAY,
-        `Telegram rejected the message: ${telegramDetail(raw)}`
-      )
-    }
-    try {
-      return JSON.parse(raw) as unknown
-    } catch {
-      return {}
-    }
   }
 
   private assertEnabled() {
