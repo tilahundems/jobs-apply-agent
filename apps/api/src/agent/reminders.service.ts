@@ -146,8 +146,14 @@ export class RemindersService {
     return { sent: true }
   }
 
+  /** Sends the current window again, even for postings already announced. */
+  async sendNow() {
+    this.assertEnabled()
+    return await this.run(true)
+  }
+
   /** Messages every open posting that closes inside the reminder window. */
-  async run() {
+  async run(force = false) {
     if (!this.enabled) return { sent: 0, enabled: false }
     if (this.running) return { sent: 0, enabled: true }
     this.running = true
@@ -168,7 +174,11 @@ export class RemindersService {
         })
         .from(jobPost)
         .leftJoin(deadlineReminder, eq(deadlineReminder.jobPostId, jobPost.id))
-        .where(and(this.window(now, horizon), isNull(deadlineReminder.id)))
+        .where(
+          force
+            ? this.window(now, horizon)
+            : and(this.window(now, horizon), isNull(deadlineReminder.id))
+        )
 
       let sent = 0
       for (const row of rows) {

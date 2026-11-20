@@ -22,6 +22,7 @@ import {
   profileQueryOptions,
   remindersQueryOptions,
   saveProfile,
+  sendRemindersNow,
   sendTestReminder,
 } from "./profile-api"
 
@@ -135,6 +136,18 @@ function DeadlineReminders() {
     },
     onError: (error: Error) => toast.error(error.message),
   })
+  const sendNow = useMutation({
+    mutationFn: sendRemindersNow,
+    onSuccess: ({ sent }) => {
+      void queryClient.invalidateQueries({ queryKey: ["reminders"] })
+      toast.success(
+        sent === 1
+          ? "Sent 1 reminder. Check Telegram."
+          : `Sent ${sent} reminders. Check Telegram.`
+      )
+    },
+    onError: (error: Error) => toast.error(error.message),
+  })
 
   return (
     <Section
@@ -148,6 +161,14 @@ function DeadlineReminders() {
               On. One message per posting, {status.days} day(s) before it
               closes.
             </p>
+            <Button
+              type="button"
+              size="sm"
+              disabled={sendNow.isPending || status.upcoming.length === 0}
+              onClick={() => sendNow.mutate()}
+            >
+              {sendNow.isPending ? "Sending…" : "Send now"}
+            </Button>
             <Button
               type="button"
               variant="outline"

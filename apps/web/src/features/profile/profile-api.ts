@@ -82,6 +82,12 @@ export async function sendTestReminder(): Promise<{ sent: boolean }> {
   })
 }
 
+export async function sendRemindersNow(): Promise<{ sent: number }> {
+  return await api<{ sent: number }>("/api/v1/reminders/send", {
+    method: "POST",
+  })
+}
+
 export const remindersQueryOptions = queryOptions({
   queryKey: ["reminders"] as const,
   queryFn: getReminderStatus,

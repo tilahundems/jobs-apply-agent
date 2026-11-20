@@ -19,4 +19,10 @@ export class RemindersController {
   test() {
     return this.reminders.sendTest()
   }
+
+  @Post("send")
+  @UsePermision("update", "CandidateProfile")
+  send() {
+    return this.reminders.sendNow()
+  }
 }
