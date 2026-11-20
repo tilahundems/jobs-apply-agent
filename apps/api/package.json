@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "node --watch --import tsx src/main.ts",
-    "build": "tsc",
+    "build": "tsc -p tsconfig.json",
     "seed": "tsx src/seed.ts",
     "seed:roles": "tsx src/seed-roles.ts",
     "start": "node dist/main.js",
