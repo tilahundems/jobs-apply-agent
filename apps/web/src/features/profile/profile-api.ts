@@ -57,3 +57,24 @@ export const profileQueryOptions = queryOptions({
   queryKey: ["profile"] as const,
   queryFn: getProfile,
 })
+
+export type ReminderStatus = {
+  enabled: boolean
+  days: number
+  checkMinutes: number
+}
+
+export async function getReminderStatus(): Promise<ReminderStatus> {
+  return await api<ReminderStatus>("/api/v1/reminders")
+}
+
+export async function sendTestReminder(): Promise<{ sent: boolean }> {
+  return await api<{ sent: boolean }>("/api/v1/reminders/test", {
+    method: "POST",
+  })
+}
+
+export const remindersQueryOptions = queryOptions({
+  queryKey: ["reminders"] as const,
+  queryFn: getReminderStatus,
+})

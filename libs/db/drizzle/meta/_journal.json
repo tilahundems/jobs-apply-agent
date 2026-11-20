@@ -15,6 +15,13 @@
       "when": 1795089819820,
       "tag": "0001_messy_daredevil",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1795158233946,
+      "tag": "0002_bizarre_juggernaut",
+      "breakpoints": true
     }
   ]
 }

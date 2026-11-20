@@ -14,6 +14,17 @@ const schema = z.object({
     .default("info"),
   /** Minutes between automatic channel scans. 0 disables the background loop. */
   AGENT_INGEST_MINUTES: z.coerce.number().int().min(0).default(0),
+  /**
+   * Telegram bot used for closing-date warnings. Create one by messaging
+   * @BotFather, then send it a message and read the chat id from
+   * https://api.telegram.org/bot<token>/getUpdates. Empty disables sending.
+   */
+  TELEGRAM_BOT_TOKEN: z.string().default(""),
+  TELEGRAM_CHAT_ID: z.string().default(""),
+  /** Warn this many days before a posting closes. */
+  DEADLINE_REMINDER_DAYS: z.coerce.number().int().min(0).max(30).default(3),
+  /** Minutes between closing-date checks. 0 disables the background loop. */
+  DEADLINE_CHECK_MINUTES: z.coerce.number().int().min(0).default(30),
 })
 
 export const env = {

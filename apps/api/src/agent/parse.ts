@@ -57,8 +57,7 @@ function endOfDay(year: number, month: number, day: number): Date | null {
     date.getFullYear() === year &&
     date.getMonth() === month - 1 &&
     date.getDate() === day
-  const plausible =
-    year >= 2000 && year <= new Date().getFullYear() + 3
+  const plausible = year >= 2000 && year <= new Date().getFullYear() + 3
   return valid && plausible ? date : null
 }
 
@@ -100,17 +99,17 @@ function dateFromPhrase(value: string): Date | null {
     return endOfDay(year, month, day)
   }
 
-  const dayMonth = /\b(\d{1,2})(?:st|nd|rd|th)?[\s-]+([a-z]{3,9})\.?,?[\s-]+(\d{4})\b/i.exec(
-    text
-  )
+  const dayMonth =
+    /\b(\d{1,2})(?:st|nd|rd|th)?[\s-]+([a-z]{3,9})\.?,?[\s-]+(\d{4})\b/i.exec(
+      text
+    )
   if (dayMonth?.[1] && dayMonth[2] && dayMonth[3]) {
     const month = monthOf(dayMonth[2])
     if (month) return endOfDay(Number(dayMonth[3]), month, Number(dayMonth[1]))
   }
 
-  const monthDay = /\b([a-z]{3,9})\.?\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(\d{4})\b/i.exec(
-    text
-  )
+  const monthDay =
+    /\b([a-z]{3,9})\.?\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(\d{4})\b/i.exec(text)
   if (monthDay?.[1] && monthDay[2] && monthDay[3]) {
     const month = monthOf(monthDay[1])
     if (month) return endOfDay(Number(monthDay[3]), month, Number(monthDay[2]))

@@ -164,5 +164,31 @@ export const jobPost = sqliteTable(
   ]
 )
 
+/**
+ * One row per posting already announced over Telegram, so a restarted process
+ * or a later check on the same day never repeats a closing-date warning.
+ */
+export const deadlineReminder = sqliteTable(
+  "deadline_reminder",
+  {
+    id: text("id").primaryKey(),
+    organizationId: organizationIdColumn(),
+    jobPostId: text("job_post_id")
+      .notNull()
+      .references(() => jobPost.id, { onDelete: "cascade" }),
+    /** Whole days left when the message went out; 0 means "closing today". */
+    daysLeft: integer("days_left").notNull(),
+    sentAt: integer("sent_at", { mode: "timestamp" })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (table) => [
+    uniqueIndex("deadline_reminder_job_uidx").on(
+      table.organizationId,
+      table.jobPostId
+    ),
+  ]
+)
+
 export type JobPost = typeof jobPost.$inferSelect
 export type CandidateProfile = typeof candidateProfile.$inferSelect

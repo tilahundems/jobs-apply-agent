@@ -20,7 +20,9 @@ import {
   type CandidateProfile,
   type ProfileInput,
   profileQueryOptions,
+  remindersQueryOptions,
   saveProfile,
+  sendTestReminder,
 } from "./profile-api"
 
 const TITLE_LIMIT = 20
@@ -105,6 +107,53 @@ function Field({
         <p className="text-xs leading-5 text-muted-foreground">{hint}</p>
       ) : null}
     </div>
+  )
+}
+
+function DeadlineReminders() {
+  const { data: status } = useSuspenseQuery(remindersQueryOptions)
+  const test = useMutation({
+    mutationFn: sendTestReminder,
+    onSuccess: () => toast.success("Test message sent. Check Telegram."),
+    onError: (error: Error) => toast.error(error.message),
+  })
+
+  return (
+    <Section
+      title="Closing-date reminders"
+      description="A Telegram message before a posting closes, so nothing expires before you apply."
+    >
+      {status.enabled ? (
+        <div className="flex flex-wrap items-center gap-3">
+          <p className="text-sm text-muted-foreground">
+            On. You get one message per posting, {status.days} day(s) before it
+            closes.
+          </p>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={test.isPending}
+            onClick={() => test.mutate()}
+          >
+            {test.isPending ? "Sending…" : "Send test message"}
+          </Button>
+        </div>
+      ) : (
+        <p className="text-sm text-muted-foreground">
+          Off. Create a bot with @BotFather on Telegram, then set{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">
+            TELEGRAM_BOT_TOKEN
+          </code>{" "}
+          and{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">
+            TELEGRAM_CHAT_ID
+          </code>{" "}
+          in the server <code className="text-xs">.env</code> and restart the
+          API. Both are free.
+        </p>
+      )}
+    </Section>
   )
 }
 
@@ -442,6 +491,8 @@ export function ProfilePage() {
             />
           </Field>
         </Section>
+
+        <DeadlineReminders />
 
         <div className="flex items-center gap-3">
           <Button type="submit" disabled={save.isPending}>

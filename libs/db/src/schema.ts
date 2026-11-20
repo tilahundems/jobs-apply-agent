@@ -1,6 +1,7 @@
 export {
   type CandidateProfile,
   candidateProfile,
+  deadlineReminder,
   EMPTY_PREFERENCES,
   EMPTY_SOURCES,
   JOB_STATUS_VALUES,
