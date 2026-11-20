@@ -21,7 +21,9 @@
     "db:seed": "turbo run seed --filter=@et/api",
     "db:studio": "turbo run studio --filter=@et/db",
     "test:integration": "pnpm build && node libs/db/scripts/test-database.mjs",
-    "test:e2e": "pnpm build && node libs/db/scripts/test-database.mjs e2e"
+    "test:e2e": "pnpm build && node libs/db/scripts/test-database.mjs e2e",
+    "web:preview": "pnpm --filter @et/web preview --port 3001",
+    "mini:app": "node scripts/mini-app.mjs"
   },
   "devDependencies": {
     "@biomejs/biome": "catalog:",
