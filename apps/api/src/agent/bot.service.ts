@@ -442,7 +442,9 @@ export class BotService implements OnModuleDestroy {
     if (!url) return
     await this.call("sendMessage", {
       chat_id: chatId,
-      text: "Open the full console inside Telegram:",
+      // ngrok's free plan shows a one-time warning page before the app loads.
+      text: "<b>Open the full console inside Telegram</b>\nIf a warning page appears, tap <b>Visit Site</b> once — it will not ask again.",
+      parse_mode: "HTML",
       reply_markup: {
         inline_keyboard: [[{ text: "Open app", web_app: { url } }]],
       },
