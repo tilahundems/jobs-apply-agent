@@ -7,7 +7,7 @@ import {
   Logger,
   type OnModuleDestroy,
 } from "@nestjs/common"
-import { and, desc, eq, like, sql } from "drizzle-orm"
+import { and, count, desc, eq, like, sql } from "drizzle-orm"
 import { env } from "../env.js"
 import { JobsService } from "./jobs.service.js"
 import { RemindersService } from "./reminders.service.js"
@@ -20,7 +20,7 @@ type TelegramUpdate = {
   callback_query?: {
     id: string
     data?: string
-    message?: { chat: { id: number } }
+    message?: { message_id?: number; chat: { id: number } }
   }
 }
 
@@ -97,11 +97,21 @@ export function isJobRef(value: string) {
   return /^[0-9a-f-]{4,36}$/i.test(value)
 }
 
-/** `/jobs` means five; anything outside 1-10 is clamped. */
-export function jobLimit(args: string) {
+/** Ten postings per page, like the web list. */
+const PAGE_SIZE = 10
+
+/** `/jobs` is page one; any page outside 1..pages is clamped. */
+export function jobPage(args: string, pages: number) {
   const asked = Number.parseInt(args.trim().split(/\s+/)[0] ?? "", 10)
-  if (Number.isNaN(asked)) return 5
-  return Math.min(10, Math.max(1, asked))
+  const page = Number.isNaN(asked) ? 1 : asked
+  return Math.min(Math.max(1, pages), Math.max(1, page))
+}
+
+/** `1–10 of 23 · page 1 of 3` — the same totals the web list shows. */
+export function pageLabel(page: number, pages: number, total: number) {
+  const from = (page - 1) * PAGE_SIZE + 1
+  const to = Math.min(total, page * PAGE_SIZE)
+  return `${from}–${to} of ${total} · page ${page} of ${pages}`
 }
 
 /**
@@ -235,6 +245,10 @@ export class BotService implements OnModuleDestroy {
           job ? [buttonsFor(job)] : []
         )
       }
+      if (action === "jobs") {
+        // The pager edits the list in place instead of stacking messages.
+        await this.sendJobs(chatId, id ?? "", callback.message?.message_id)
+      }
       // A button that took too long to answer must not undo the work above.
       await this.call("answerCallbackQuery", {
         callback_query_id: callback.id,
@@ -295,8 +309,27 @@ export class BotService implements OnModuleDestroy {
     )
   }
 
-  private async sendJobs(chatId: number, args: string) {
-    const limit = jobLimit(args)
+  /**
+   * Every posting, newest score first, ten per page with Prev/Next — the same
+   * set and totals the web list shows, so the two never disagree.
+   */
+  private async sendJobs(chatId: number, args: string, editMessageId?: number) {
+    const [counted] = await db
+      .select({ value: count() })
+      .from(jobPost)
+      .where(tenantWhere(jobPost.organizationId))
+    const total = Number(counted?.value ?? 0)
+
+    if (total === 0) {
+      await this.reply(
+        chatId,
+        "No postings yet. Send /scan to read your channels."
+      )
+      return
+    }
+
+    const pages = Math.max(1, Math.ceil(total / PAGE_SIZE))
+    const page = jobPage(args, pages)
     const rows = await db
       .select({
         id: jobPost.id,
@@ -309,31 +342,20 @@ export class BotService implements OnModuleDestroy {
         deadlineAt: jobPost.deadlineAt,
       })
       .from(jobPost)
-      .where(
-        and(
-          tenantWhere(jobPost.organizationId),
-          sql`${jobPost.status} in ('new', 'prepared')`
-        )
-      )
+      .where(tenantWhere(jobPost.organizationId))
       .orderBy(desc(jobPost.score), desc(jobPost.createdAt))
-      .limit(limit)
-
-    if (rows.length === 0) {
-      await this.reply(
-        chatId,
-        "No open postings yet. Send /scan to read your channels."
-      )
-      return
-    }
+      .limit(PAGE_SIZE)
+      .offset((page - 1) * PAGE_SIZE)
 
     const now = new Date()
     await this.reply(
       chatId,
       [
-        `<b>Best open postings</b>`,
+        `<b>Postings</b> · ${pageLabel(page, pages, total)}`,
         ...rows.map((job) => formatJobLine(job, now)),
       ].join("\n"),
-      rows.map((job) => buttonsFor(job))
+      [...rows.map((job) => buttonsFor(job)), navRow(page, pages)],
+      editMessageId
     )
   }
 
@@ -417,8 +439,17 @@ export class BotService implements OnModuleDestroy {
     return rows[0] ?? null
   }
 
-  private async reply(chatId: number, text: string, keyboard: Button[][] = []) {
-    await this.call("sendMessage", {
+  /**
+   * Sends a message, or edits one already in the chat so paging does not pile
+   * up messages. An edit that Telegram refuses falls back to a fresh message.
+   */
+  private async reply(
+    chatId: number,
+    text: string,
+    keyboard: Button[][] = [],
+    editMessageId?: number
+  ) {
+    const payload: Record<string, unknown> = {
       chat_id: chatId,
       text: text.slice(0, 4_000),
       parse_mode: "HTML",
@@ -426,14 +457,22 @@ export class BotService implements OnModuleDestroy {
       ...(keyboard.length > 0
         ? { reply_markup: { inline_keyboard: keyboard } }
         : {}),
-    })
+    }
+    if (editMessageId !== undefined) {
+      const edited = await this.call("editMessageText", {
+        ...payload,
+        message_id: editMessageId,
+      }).catch(() => null)
+      if (edited) return
+    }
+    await this.call("sendMessage", payload)
   }
 }
 
 const HELP = [
   "<b>Job agent</b>",
   "/closing — postings closing soon",
-  "/jobs [n] — best open postings",
+  "/jobs [page] — every posting, 10 per page",
   "/job &lt;id&gt; — one posting in full",
   "/applied &lt;id&gt; — mark it applied (stops reminders)",
   "/scan — read your channels again",
@@ -452,6 +491,15 @@ function buttonsFor(job: JobRow): Button[] {
     buttons.push({ text: "✓ Applied", callback_data: `applied:${job.id}` })
   }
   return buttons
+}
+
+function navRow(page: number, pages: number): Button[] {
+  if (pages === 1) return [{ text: `${page}/${pages}`, callback_data: "noop" }]
+  return [
+    { text: "◀ Prev", callback_data: `jobs:${page - 1}` },
+    { text: `${page}/${pages}`, callback_data: "noop" },
+    { text: "Next ▶", callback_data: `jobs:${page + 1}` },
+  ]
 }
 
 function describe(error: unknown) {

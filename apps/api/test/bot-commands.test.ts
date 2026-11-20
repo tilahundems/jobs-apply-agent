@@ -4,7 +4,8 @@ import {
   formatJobCard,
   formatJobLine,
   isJobRef,
-  jobLimit,
+  jobPage,
+  pageLabel,
   parseCommand,
 } from "../src/agent/bot.service.js"
 
@@ -41,12 +42,19 @@ test("accepts full ids and short prefixes, not prose", () => {
   assert.equal(isJobRef("hey"), false)
 })
 
-test("defaults /jobs to five and clamps the rest", () => {
-  assert.equal(jobLimit(""), 5)
-  assert.equal(jobLimit("3"), 3)
-  assert.equal(jobLimit(" 0 "), 1)
-  assert.equal(jobLimit("500"), 10)
-  assert.equal(jobLimit("many"), 5)
+test("pages /jobs within the real number of pages", () => {
+  assert.equal(jobPage("", 3), 1)
+  assert.equal(jobPage("2", 3), 2)
+  assert.equal(jobPage("0", 3), 1)
+  assert.equal(jobPage("500", 3), 3)
+  assert.equal(jobPage("many", 3), 1)
+  // One posting still has a page to stand on.
+  assert.equal(jobPage("4", 0), 1)
+})
+
+test("states the same totals the web list shows", () => {
+  assert.equal(pageLabel(1, 3, 23), "1–10 of 23 · page 1 of 3")
+  assert.equal(pageLabel(3, 3, 23), "21–23 of 23 · page 3 of 3")
 })
 
 test("lists a posting with its score and closing day, escaped for HTML", () => {
