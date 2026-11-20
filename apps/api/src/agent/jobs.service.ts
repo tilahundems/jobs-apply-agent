@@ -35,6 +35,7 @@ import { apiError } from "../http/api-error.js"
 import { markdownToDocx } from "./docx.js"
 import { scoreJob } from "./match.js"
 import { isDeadlinePassed, parseJob } from "./parse.js"
+import { RemindersService } from "./reminders.service.js"
 import { tailorApplication } from "./tailor.js"
 import { fetchChannelPosts } from "./telegram-source.js"
 
@@ -119,6 +120,7 @@ const jobColumns = {
 export class JobsService {
   constructor(
     @Inject(AuthzService) private readonly authz: AuthzService,
+    @Inject(RemindersService) private readonly reminders: RemindersService,
     @InjectAudit() private readonly audit?: AuditRecorder
   ) {}
 
@@ -421,6 +423,9 @@ export class JobsService {
 
     // A posting that closed is not a lead. Clear the stored ones before reading
     // channels again, so the list never keeps work that cannot be applied to.
+    // Reminder messages go first: deleting a posting also drops the reminder row
+    // that holds the Telegram message id.
+    await this.reminders.clearExpired()
     const dropped = await db
       .delete(jobPost)
       .where(

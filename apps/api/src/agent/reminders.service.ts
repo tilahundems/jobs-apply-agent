@@ -6,7 +6,17 @@ import {
   tenantWhere,
 } from "@et/db"
 import { HttpStatus, Injectable, Logger } from "@nestjs/common"
-import { and, eq, gte, isNotNull, isNull, lte, notInArray } from "drizzle-orm"
+import {
+  and,
+  eq,
+  gte,
+  inArray,
+  isNotNull,
+  isNull,
+  lt,
+  lte,
+  notInArray,
+} from "drizzle-orm"
 import { env } from "../env.js"
 import { apiError } from "../http/api-error.js"
 
@@ -185,8 +195,9 @@ export class RemindersService {
         const deadlineAt = row.deadlineAt
         if (!deadlineAt) continue
         const daysLeft = daysLeftUntil(deadlineAt, now)
+        let messageId: number | null = null
         try {
-          await this.send(formatReminder(row, daysLeft))
+          messageId = await this.send(formatReminder(row, daysLeft))
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error)
           this.logger.warn(`Reminder skipped for ${row.id}: ${message}`)
@@ -199,8 +210,16 @@ export class RemindersService {
             organizationId: row.organizationId,
             jobPostId: row.id,
             daysLeft,
+            messageId,
           })
-          .onConflictDoNothing()
+          // A resend replaces the message the chat holds, so keep the new id.
+          .onConflictDoUpdate({
+            target: [
+              deadlineReminder.organizationId,
+              deadlineReminder.jobPostId,
+            ],
+            set: { messageId, daysLeft, sentAt: new Date() },
+          })
         sent += 1
       }
 
@@ -211,26 +230,87 @@ export class RemindersService {
     }
   }
 
+  /**
+   * Deletes the bot's messages for postings whose closing date has passed, so
+   * the chat only holds work that can still be applied to. Telegram refuses
+   * deletions older than 48 hours; those are left alone and forgotten.
+   */
+  async clearExpired() {
+    if (!this.enabled) return { cleared: 0 }
+    const rows = await db
+      .select({
+        id: deadlineReminder.id,
+        messageId: deadlineReminder.messageId,
+      })
+      .from(deadlineReminder)
+      .innerJoin(jobPost, eq(jobPost.id, deadlineReminder.jobPostId))
+      .where(
+        and(
+          tenantWhere(deadlineReminder.organizationId),
+          lt(jobPost.deadlineAt, new Date())
+        )
+      )
+    if (rows.length === 0) return { cleared: 0 }
+
+    for (const row of rows) {
+      if (row.messageId === null) continue
+      try {
+        await this.deleteMessage(row.messageId)
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        this.logger.warn(`Earlier reminder kept: ${message}`)
+      }
+    }
+
+    await db.delete(deadlineReminder).where(
+      inArray(
+        deadlineReminder.id,
+        rows.map((row) => row.id)
+      )
+    )
+    return { cleared: rows.length }
+  }
+
   private async send(text: string) {
+    const body = await this.call("sendMessage", {
+      chat_id: env.TELEGRAM_CHAT_ID,
+      text: text.slice(0, 4_000),
+      parse_mode: "HTML",
+    })
+    const messageId = (body as { result?: { message_id?: unknown } }).result
+      ?.message_id
+    return typeof messageId === "number" ? messageId : null
+  }
+
+  private async deleteMessage(messageId: number) {
+    await this.call("deleteMessage", {
+      chat_id: env.TELEGRAM_CHAT_ID,
+      message_id: messageId,
+    })
+  }
+
+  /** Calls a Bot API method and returns its parsed JSON body. */
+  private async call(method: string, payload: Record<string, unknown>) {
     const response = await fetch(
-      `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`,
+      `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/${method}`,
       {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          chat_id: env.TELEGRAM_CHAT_ID,
-          text: text.slice(0, 4_000),
-          parse_mode: "HTML",
-        }),
+        body: JSON.stringify(payload),
         signal: AbortSignal.timeout(15_000),
       }
     )
+    const raw = await response.text().catch(() => "")
     if (!response.ok) {
-      const detail = await response.text().catch(() => "")
       throw apiError(
         HttpStatus.BAD_GATEWAY,
-        `Telegram rejected the message: ${telegramDetail(detail)}`
+        `Telegram rejected the message: ${telegramDetail(raw)}`
       )
+    }
+    try {
+      return JSON.parse(raw) as unknown
+    } catch {
+      return {}
     }
   }
 

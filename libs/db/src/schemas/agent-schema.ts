@@ -178,6 +178,8 @@ export const deadlineReminder = sqliteTable(
       .references(() => jobPost.id, { onDelete: "cascade" }),
     /** Whole days left when the message went out; 0 means "closing today". */
     daysLeft: integer("days_left").notNull(),
+    /** Telegram's id for the sent message, so it can be deleted later. */
+    messageId: integer("message_id"),
     sentAt: integer("sent_at", { mode: "timestamp" })
       .notNull()
       .$defaultFn(() => new Date()),

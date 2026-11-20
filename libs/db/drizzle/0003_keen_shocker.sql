@@ -1,0 +1,1 @@
+ALTER TABLE `deadline_reminder` ADD `message_id` integer;

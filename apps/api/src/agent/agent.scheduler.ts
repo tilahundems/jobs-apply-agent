@@ -80,6 +80,8 @@ export class AgentScheduler implements OnModuleInit, OnModuleDestroy {
     if (this.reminding) return
     this.reminding = true
     try {
+      // Clear the chat of postings that have closed, then warn about the rest.
+      await this.reminders.clearExpired()
       await this.reminders.run()
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
