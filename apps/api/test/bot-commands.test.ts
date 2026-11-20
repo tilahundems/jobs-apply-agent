@@ -4,6 +4,7 @@ import {
   formatJobCard,
   formatJobLine,
   isJobRef,
+  jobLimit,
   parseCommand,
 } from "../src/agent/bot.service.js"
 
@@ -38,6 +39,14 @@ test("accepts full ids and short prefixes, not prose", () => {
   assert.equal(isJobRef("39aebfff-7f65-47d2-a9cc-52048fc3435a"), true)
   assert.equal(isJobRef("39aebfff"), true)
   assert.equal(isJobRef("hey"), false)
+})
+
+test("defaults /jobs to five and clamps the rest", () => {
+  assert.equal(jobLimit(""), 5)
+  assert.equal(jobLimit("3"), 3)
+  assert.equal(jobLimit(" 0 "), 1)
+  assert.equal(jobLimit("500"), 10)
+  assert.equal(jobLimit("many"), 5)
 })
 
 test("lists a posting with its score and closing day, escaped for HTML", () => {

@@ -97,6 +97,13 @@ export function isJobRef(value: string) {
   return /^[0-9a-f-]{4,36}$/i.test(value)
 }
 
+/** `/jobs` means five; anything outside 1-10 is clamped. */
+export function jobLimit(args: string) {
+  const asked = Number.parseInt(args.trim().split(/\s+/)[0] ?? "", 10)
+  if (Number.isNaN(asked)) return 5
+  return Math.min(10, Math.max(1, asked))
+}
+
 /**
  * Reads and answers messages as a bot of its own, so the reminder bot stays a
  * one-way notifier and the agent is usable from a phone without the web app.
@@ -184,12 +191,25 @@ export class BotService implements OnModuleDestroy {
     return updates
   }
 
+  /** The owner's chat plus any extra ids in TELEGRAM_ALLOWED_CHAT_IDS. */
+  private allowedChats() {
+    return new Set(
+      [env.TELEGRAM_CHAT_ID, ...env.TELEGRAM_ALLOWED_CHAT_IDS.split(",")]
+        .map((id) => id.trim())
+        .filter(Boolean)
+    )
+  }
+
   private async handle(update: TelegramUpdate) {
     const chatId =
       update.message?.chat.id ?? update.callback_query?.message?.chat.id
     if (chatId === undefined) return
-    if (String(chatId) !== env.TELEGRAM_CHAT_ID) {
-      await this.reply(chatId, "This bot is private.")
+    if (!this.allowedChats().has(String(chatId))) {
+      // Say the id so the owner can allowlist it without reading logs.
+      await this.reply(
+        chatId,
+        `This bot is private. Your chat id is <code>${chatId}</code> — give it to the owner and they can add it.`
+      )
       return
     }
 
@@ -264,8 +284,7 @@ export class BotService implements OnModuleDestroy {
   }
 
   private async sendJobs(chatId: number, args: string) {
-    const asked = Number(args.trim().split(/\s+/)[0])
-    const limit = Number.isFinite(asked) ? Math.min(10, Math.max(1, asked)) : 5
+    const limit = jobLimit(args)
     const rows = await db
       .select({
         id: jobPost.id,

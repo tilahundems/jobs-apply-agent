@@ -26,8 +26,13 @@ const schema = z.object({
    * one-way. Empty disables the command bot.
    */
   TELEGRAM_AGENT_BOT_TOKEN: z.string().default(""),
-  /** The only chat allowed to use the command bot; also where replies go. */
+  /** The owner's chat: where reminder warnings are sent. */
   TELEGRAM_CHAT_ID: z.string().default(""),
+  /**
+   * Extra chats allowed to use the command bot, comma separated. The owner's
+   * chat is always allowed. Every allowed chat sees the same postings.
+   */
+  TELEGRAM_ALLOWED_CHAT_IDS: z.string().default(""),
   /** Warn this many days before a posting closes. */
   DEADLINE_REMINDER_DAYS: z.coerce.number().int().min(0).max(30).default(3),
   /** Minutes between closing-date checks. 0 disables the background loop. */
