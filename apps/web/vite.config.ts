@@ -22,6 +22,9 @@ const config = defineConfig(({ mode }) => {
     resolve: { tsconfigPaths: true },
     server: {
       port: 3000,
+      // Telegram loads the mini app from a public tunnel hostname, which Vite
+      // otherwise rejects as an unknown host.
+      allowedHosts: [".trycloudflare.com", ".ngrok-free.app", ".ngrok.io"],
       proxy: {
         "/api": {
           target: env.API_URL || "http://localhost:4000",

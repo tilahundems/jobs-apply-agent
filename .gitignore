@@ -52,3 +52,6 @@ Thumbs.db
 data/
 *.db
 *.db-journal
+
+# Local tunnel binary used for the Telegram mini app
+.tools/
