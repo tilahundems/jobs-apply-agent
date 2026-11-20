@@ -53,8 +53,8 @@ export class AgentScheduler implements OnModuleInit, OnModuleDestroy {
       this.reminderTimer.unref?.()
     }
 
-    // Commands answer from the same bot that sends reminders, so the agent is
-    // usable from the phone even when scanning is off.
+    // The command bot runs on its own token, so the agent stays usable from a
+    // phone even when scanning and reminders are off.
     this.bot.start()
   }
 
