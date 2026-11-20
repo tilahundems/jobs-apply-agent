@@ -53,6 +53,17 @@ const closingDate = (date: Date) =>
     timeZone: "Africa/Addis_Ababa",
   }).format(date)
 
+/** Telegram's `description` is the useful half of its error body. */
+export const telegramDetail = (body: string) => {
+  try {
+    const parsed = JSON.parse(body) as { description?: unknown }
+    if (typeof parsed.description === "string") return parsed.description
+  } catch {
+    // Fall through to the raw body.
+  }
+  return body.slice(0, 200) || "no reason given"
+}
+
 /**
  * Warns over Telegram when a posting is about to close. A bot costs nothing and
  * reaches a phone, and every posting is announced once at most: the
@@ -167,8 +178,9 @@ export class RemindersService {
     )
     if (!response.ok) {
       const detail = await response.text().catch(() => "")
-      throw new Error(
-        `Telegram rejected the message (${response.status}): ${detail.slice(0, 200)}`
+      throw apiError(
+        HttpStatus.BAD_GATEWAY,
+        `Telegram rejected the message: ${telegramDetail(detail)}`
       )
     }
   }

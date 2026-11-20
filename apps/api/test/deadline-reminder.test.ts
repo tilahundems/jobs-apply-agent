@@ -3,6 +3,7 @@ import { test } from "node:test"
 import {
   daysLeftUntil,
   formatReminder,
+  telegramDetail,
 } from "../src/agent/reminders.service.js"
 
 const now = new Date("2026-11-20T06:00:00Z")
@@ -56,4 +57,13 @@ test("says today or tomorrow near the deadline and escapes HTML", () => {
   )
   // A posting without a title still produces a readable message.
   assert.match(formatReminder({ ...base, title: null }, 3), /A posting/)
+})
+
+test("surfaces Telegram's own reason instead of a generic failure", () => {
+  assert.equal(
+    telegramDetail('{"ok":false,"description":"Bad Request: chat not found"}'),
+    "Bad Request: chat not found"
+  )
+  // A non-JSON body still gives the user something to act on.
+  assert.equal(telegramDetail("gateway down"), "gateway down")
 })
