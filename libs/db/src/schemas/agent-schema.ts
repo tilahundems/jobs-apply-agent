@@ -168,6 +168,25 @@ export const jobPost = sqliteTable(
  * One row per posting already announced over Telegram, so a restarted process
  * or a later check on the same day never repeats a closing-date warning.
  */
+/**
+ * Messages the command bot sent, so /clear can delete them from the chat.
+ * Telegram only allows deleting for 48 hours, after which rows are dropped.
+ */
+export const botMessage = sqliteTable(
+  "bot_message",
+  {
+    id: text("id").primaryKey(),
+    organizationId: organizationIdColumn(),
+    /** Chat the message went to; one row per message per chat. */
+    chatId: text("chat_id").notNull(),
+    messageId: integer("message_id").notNull(),
+    sentAt: integer("sent_at", { mode: "timestamp" })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (table) => [index("bot_message_chat_idx").on(table.chatId, table.sentAt)]
+)
+
 export const deadlineReminder = sqliteTable(
   "deadline_reminder",
   {

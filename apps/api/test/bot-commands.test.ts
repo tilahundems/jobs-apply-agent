@@ -5,6 +5,7 @@ import {
   formatJobLine,
   isJobRef,
   jobPage,
+  menuCommand,
   pageLabel,
   parseCommand,
 } from "../src/agent/bot.service.js"
@@ -34,6 +35,17 @@ test("reads a command and its argument, ignoring the bot suffix", () => {
   // Plain chat is not a command, and a bare slash is nothing.
   assert.equal(parseCommand("hello there"), null)
   assert.equal(parseCommand("/"), null)
+})
+
+test("turns keyboard labels into the commands they stand for", () => {
+  assert.deepEqual(menuCommand("Postings"), { command: "jobs", args: "" })
+  assert.deepEqual(menuCommand("  Closing soon "), {
+    command: "closing",
+    args: "",
+  })
+  assert.deepEqual(menuCommand("Clear"), { command: "clear", args: "" })
+  // Ordinary chat must not be swallowed as a command.
+  assert.equal(menuCommand("hello"), null)
 })
 
 test("accepts full ids and short prefixes, not prose", () => {

@@ -1,5 +1,5 @@
 import type { JobStatusInput } from "@et/contracts"
-import { db, jobPost, tenantWhere, user } from "@et/db"
+import { botMessage, db, jobPost, tenantWhere, user } from "@et/db"
 import {
   HttpException,
   Inject,
@@ -7,7 +7,7 @@ import {
   Logger,
   type OnModuleDestroy,
 } from "@nestjs/common"
-import { and, count, desc, eq, like, sql } from "drizzle-orm"
+import { and, count, desc, eq, like, lt, sql } from "drizzle-orm"
 import { env } from "../env.js"
 import { JobsService } from "./jobs.service.js"
 import { RemindersService } from "./reminders.service.js"
@@ -156,6 +156,7 @@ export class BotService implements OnModuleDestroy {
     this.running = true
     this.stopped = false
     this.logger.log("Listening for commands in the authorized chat.")
+    void this.forgetOldMessages()
     void this.loop()
   }
 
@@ -258,13 +259,14 @@ export class BotService implements OnModuleDestroy {
 
     const text = update.message?.text
     if (!text) return
-    const parsed = parseCommand(text)
+    // The persistent keyboard sends plain labels, not commands.
+    const parsed = parseCommand(text) ?? menuCommand(text)
     if (!parsed) return
 
     switch (parsed.command) {
       case "start":
       case "help":
-        await this.reply(chatId, HELP)
+        await this.reply(chatId, HELP, [], undefined, true)
         return
       case "closing":
         return await this.sendClosing(chatId)
@@ -276,6 +278,8 @@ export class BotService implements OnModuleDestroy {
         return await this.sendApplied(chatId, parsed.args)
       case "scan":
         return await this.sendScan(chatId)
+      case "clear":
+        return await this.sendClear(chatId)
       default:
         await this.reply(
           chatId,
@@ -402,6 +406,50 @@ export class BotService implements OnModuleDestroy {
     await this.reply(chatId, lines.join("\n"))
   }
 
+  /** Deletes what this bot posted here, so a long chat can start clean. */
+  private async sendClear(chatId: number) {
+    const rows = await db
+      .select({ messageId: botMessage.messageId })
+      .from(botMessage)
+      .where(eq(botMessage.chatId, String(chatId)))
+
+    let deleted = 0
+    for (const row of rows) {
+      const ok = await this.call("deleteMessage", {
+        chat_id: chatId,
+        message_id: row.messageId,
+      }).then(
+        () => true,
+        () => false
+      )
+      if (ok) deleted++
+    }
+    await db.delete(botMessage).where(eq(botMessage.chatId, String(chatId)))
+
+    // Telegram refuses deletions after 48 hours, so name what is left behind.
+    const left = rows.length - deleted
+    await this.reply(
+      chatId,
+      [
+        `<b>Chat cleared</b> · ${deleted} message(s) removed`,
+        ...(left > 0
+          ? [`${left} older than 48h cannot be deleted by a bot.`]
+          : []),
+      ].join("\n"),
+      [],
+      undefined,
+      true
+    )
+  }
+
+  /** Keeps the tracked list from growing past Telegram's delete window. */
+  private async forgetOldMessages() {
+    await db
+      .delete(botMessage)
+      .where(lt(botMessage.sentAt, new Date(Date.now() - 48 * 60 * 60_000)))
+      .catch(() => undefined)
+  }
+
   private async botApply(ref: string) {
     const job = await this.findJob(ref)
     if (!job) throw new Error("No posting matches that id.")
@@ -447,35 +495,79 @@ export class BotService implements OnModuleDestroy {
     chatId: number,
     text: string,
     keyboard: Button[][] = [],
-    editMessageId?: number
+    editMessageId?: number,
+    menu = false
   ) {
     const payload: Record<string, unknown> = {
       chat_id: chatId,
       text: text.slice(0, 4_000),
       parse_mode: "HTML",
       link_preview_options: { is_disabled: true },
-      ...(keyboard.length > 0
-        ? { reply_markup: { inline_keyboard: keyboard } }
-        : {}),
+      ...(menu
+        ? { reply_markup: { keyboard: MENU, resize_keyboard: true } }
+        : keyboard.length > 0
+          ? { reply_markup: { inline_keyboard: keyboard } }
+          : {}),
     }
     if (editMessageId !== undefined) {
       const edited = await this.call("editMessageText", {
         ...payload,
         message_id: editMessageId,
       }).catch(() => null)
-      if (edited) return
+      if (edited) {
+        await this.remember(chatId, editMessageId)
+        return
+      }
     }
-    await this.call("sendMessage", payload)
+    const sent = (await this.call("sendMessage", payload)) as {
+      result?: { message_id?: number }
+    }
+    await this.remember(chatId, sent.result?.message_id)
   }
+
+  private async remember(chatId: number, messageId?: number) {
+    if (typeof messageId !== "number") return
+    await db
+      .insert(botMessage)
+      .values({ id: crypto.randomUUID(), chatId: String(chatId), messageId })
+      .catch((error) =>
+        this.logger.warn(`Message not tracked: ${describe(error)}`)
+      )
+  }
+}
+
+/** The persistent keyboard, sent with /start and /help. */
+const MENU = [
+  [{ text: "Postings" }, { text: "Closing soon" }],
+  [{ text: "Scan" }, { text: "Clear" }],
+]
+
+/** Keyboard labels are plain text; map them to the commands they stand for. */
+export function menuCommand(text: string) {
+  const key = text.trim().toLowerCase()
+  const map: Record<string, string> = {
+    postings: "jobs",
+    jobs: "jobs",
+    "closing soon": "closing",
+    closing: "closing",
+    scan: "scan",
+    "scan now": "scan",
+    clear: "clear",
+    "clear chat": "clear",
+  }
+  const command = map[key]
+  return command ? { command, args: "" } : null
 }
 
 const HELP = [
   "<b>Job agent</b>",
+  "Use the buttons below, or type:",
   "/closing — postings closing soon",
   "/jobs [page] — every posting, 10 per page",
   "/job &lt;id&gt; — one posting in full",
   "/applied &lt;id&gt; — mark it applied (stops reminders)",
   "/scan — read your channels again",
+  "/clear — delete this bot's messages here",
 ].join("\n")
 
 const short = (title: string | null) =>

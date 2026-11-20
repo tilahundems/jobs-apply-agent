@@ -1,4 +1,5 @@
 export {
+  botMessage,
   type CandidateProfile,
   candidateProfile,
   deadlineReminder,
