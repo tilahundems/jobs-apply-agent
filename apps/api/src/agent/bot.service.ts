@@ -98,10 +98,10 @@ export function isJobRef(value: string) {
 }
 
 /**
- * Reads and answers messages with the same bot that sends reminders, so the
- * agent is usable from a phone without the web app. Long polling is used on
- * purpose: it needs no public HTTPS endpoint. Only the configured chat may
- * talk to it.
+ * Reads and answers messages as a bot of its own, so the reminder bot stays a
+ * one-way notifier and the agent is usable from a phone without the web app.
+ * Long polling is used on purpose: it needs no public HTTPS endpoint. Only the
+ * configured chat may talk to it.
  */
 @Injectable()
 export class BotService implements OnModuleDestroy {
@@ -116,7 +116,21 @@ export class BotService implements OnModuleDestroy {
   ) {}
 
   get enabled() {
-    return Boolean(env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_CHAT_ID)
+    return Boolean(env.TELEGRAM_AGENT_BOT_TOKEN && env.TELEGRAM_CHAT_ID)
+  }
+
+  /** Every call goes to the command bot's token, never the reminder bot's. */
+  private call(
+    method: string,
+    payload: Record<string, unknown>,
+    timeoutMs?: number
+  ) {
+    return telegramCall(
+      method,
+      payload,
+      timeoutMs,
+      env.TELEGRAM_AGENT_BOT_TOKEN
+    )
   }
 
   /** Starts the polling loop once; safe to call from the scheduler. */
@@ -152,7 +166,7 @@ export class BotService implements OnModuleDestroy {
   }
 
   private async getUpdates() {
-    const body = await telegramCall(
+    const body = await this.call(
       "getUpdates",
       {
         offset: this.offset,
@@ -190,7 +204,7 @@ export class BotService implements OnModuleDestroy {
         )
       }
       // A button that took too long to answer must not undo the work above.
-      await telegramCall("answerCallbackQuery", {
+      await this.call("answerCallbackQuery", {
         callback_query_id: callback.id,
       }).catch(() => undefined)
       return
@@ -373,7 +387,7 @@ export class BotService implements OnModuleDestroy {
   }
 
   private async reply(chatId: number, text: string, keyboard: Button[][] = []) {
-    await telegramCall("sendMessage", {
+    await this.call("sendMessage", {
       chat_id: chatId,
       text: text.slice(0, 4_000),
       parse_mode: "HTML",

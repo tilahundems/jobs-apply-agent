@@ -20,6 +20,13 @@ const schema = z.object({
    * https://api.telegram.org/bot<token>/getUpdates. Empty disables sending.
    */
   TELEGRAM_BOT_TOKEN: z.string().default(""),
+  /**
+   * A second bot, from @BotFather, that answers commands instead of sending
+   * warnings. Keeping it separate means a chat with the notifier stays
+   * one-way. Empty disables the command bot.
+   */
+  TELEGRAM_AGENT_BOT_TOKEN: z.string().default(""),
+  /** The only chat allowed to use the command bot; also where replies go. */
   TELEGRAM_CHAT_ID: z.string().default(""),
   /** Warn this many days before a posting closes. */
   DEADLINE_REMINDER_DAYS: z.coerce.number().int().min(0).max(30).default(3),

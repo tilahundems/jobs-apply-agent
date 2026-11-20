@@ -20,10 +20,11 @@ export const telegramDetail = (body: string) => {
 export async function telegramCall(
   method: string,
   payload: Record<string, unknown>,
-  timeoutMs = 15_000
+  timeoutMs = 15_000,
+  token = env.TELEGRAM_BOT_TOKEN
 ) {
   const response = await fetch(
-    `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/${method}`,
+    `https://api.telegram.org/bot${token}/${method}`,
     {
       method: "POST",
       headers: { "content-type": "application/json" },
