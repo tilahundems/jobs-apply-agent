@@ -8,6 +8,13 @@ import { defineConfig, loadEnv } from "vite"
 const webDir = path.dirname(fileURLToPath(import.meta.url))
 const repoRoot = path.resolve(webDir, "../..")
 
+const TUNNEL_HOSTS = [
+  ".trycloudflare.com",
+  ".ngrok-free.app",
+  ".ngrok-free.dev",
+  ".ngrok.io",
+]
+
 const config = defineConfig(({ mode }) => {
   const env = loadEnv(mode, repoRoot, "")
 
@@ -17,6 +24,8 @@ const config = defineConfig(({ mode }) => {
     }
   }
 
+  const API_URL = env.API_URL || "http://localhost:4000"
+
   return {
     envDir: repoRoot,
     resolve: { tsconfigPaths: true },
@@ -24,13 +33,15 @@ const config = defineConfig(({ mode }) => {
       port: 3000,
       // Telegram loads the mini app from a public tunnel hostname, which Vite
       // otherwise rejects as an unknown host.
-      allowedHosts: [".trycloudflare.com", ".ngrok-free.app", ".ngrok.io"],
-      proxy: {
-        "/api": {
-          target: env.API_URL || "http://localhost:4000",
-          changeOrigin: true,
-        },
-      },
+      allowedHosts: TUNNEL_HOSTS,
+      proxy: { "/api": { target: API_URL, changeOrigin: true } },
+    },
+    // The mini app must not load the dev server: one request per module is slow
+    // enough over a tunnel that the chat shows a blank page until it mounts.
+    preview: {
+      port: 3001,
+      allowedHosts: TUNNEL_HOSTS,
+      proxy: { "/api": { target: API_URL, changeOrigin: true } },
     },
     optimizeDeps: {
       holdUntilCrawlEnd: false,
