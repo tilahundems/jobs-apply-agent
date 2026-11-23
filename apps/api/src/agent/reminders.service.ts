@@ -61,6 +61,46 @@ const closingDate = (date: Date) =>
     timeZone: "Africa/Addis_Ababa",
   }).format(date)
 
+/** A posting the latest scan added, as the announcement needs it. */
+export type NewPosting = {
+  title: string | null
+  company: string | null
+  location: string | null
+  url: string | null
+  deadlineAt: Date | null
+  score: number | null
+}
+
+/** How many postings one announcement lists before pointing at the app. */
+const ANNOUNCED_PER_MESSAGE = 10
+
+/**
+ * One message for a scan's worth of postings. A scan can find a dozen at once,
+ * and a dozen notifications are noise, so they arrive as a single digest.
+ */
+export function formatNewJobs(rows: NewPosting[]) {
+  const shown = rows.slice(0, ANNOUNCED_PER_MESSAGE)
+  const lines = [
+    `<b>🆕 ${rows.length} new posting${rows.length === 1 ? "" : "s"}</b>`,
+  ]
+
+  shown.forEach((row, index) => {
+    const score = row.score === null ? "" : ` — ${row.score}% match`
+    lines.push("")
+    lines.push(
+      `${index + 1}. <b>${escapeHtml(row.title ?? "Untitled posting")}</b>${score}`
+    )
+    const where = [row.company, row.location].filter(Boolean).join(" · ")
+    if (where) lines.push(escapeHtml(where))
+    if (row.deadlineAt) lines.push(`Closes ${closingDate(row.deadlineAt)}`)
+    if (row.url) lines.push(escapeHtml(row.url))
+  })
+
+  const hidden = rows.length - shown.length
+  if (hidden > 0) lines.push("", `…and ${hidden} more in the app.`)
+  return lines.join("\n")
+}
+
 /**
  * Warns over Telegram when a posting is about to close. A bot costs nothing and
  * reaches a phone, and every posting is announced once at most: the
@@ -140,6 +180,17 @@ export class RemindersService {
       lte(jobPost.deadlineAt, horizon),
       notInArray(jobPost.status, SETTLED_STATUSES)
     )
+  }
+
+  /**
+   * Announces the postings a scan just added. They go to the same chat as the
+   * closing-date warnings, so a scan reaches the phone instead of waiting for
+   * someone to open the app.
+   */
+  async announceNew(rows: NewPosting[]) {
+    if (!this.enabled || rows.length === 0) return 0
+    await this.send(formatNewJobs(rows))
+    return rows.length
   }
 
   async sendTest() {

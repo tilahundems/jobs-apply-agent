@@ -9,7 +9,7 @@ import {
   requiredOrganizationId,
   tenantWhere,
 } from "@et/db"
-import { HttpStatus, Inject, Injectable } from "@nestjs/common"
+import { HttpStatus, Inject, Injectable, Logger } from "@nestjs/common"
 import {
   and,
   asc,
@@ -35,7 +35,7 @@ import { apiError } from "../http/api-error.js"
 import { markdownToDocx } from "./docx.js"
 import { scoreJob } from "./match.js"
 import { isDeadlinePassed, parseJob } from "./parse.js"
-import { RemindersService } from "./reminders.service.js"
+import { type NewPosting, RemindersService } from "./reminders.service.js"
 import { tailorApplication } from "./tailor.js"
 import { fetchChannelPosts } from "./telegram-source.js"
 
@@ -118,6 +118,8 @@ const jobColumns = {
 
 @Injectable()
 export class JobsService {
+  private readonly logger = new Logger(JobsService.name)
+
   constructor(
     @Inject(AuthzService) private readonly authz: AuthzService,
     @Inject(RemindersService) private readonly reminders: RemindersService,
@@ -437,6 +439,9 @@ export class JobsService {
       .returning({ id: jobPost.id })
     summary.expired = dropped.length
 
+    // Announcements are collected here because only the scan knows what is new.
+    const fresh: NewPosting[] = []
+
     const existing = new Set(
       (
         await db.query.jobPost.findMany({
@@ -478,7 +483,7 @@ export class JobsService {
           continue
         }
 
-        await db
+        const created = await db
           .insert(jobPost)
           .values({
             id: crypto.randomUUID(),
@@ -501,10 +506,30 @@ export class JobsService {
             matchedSkills: match.matchedSkills,
           })
           .onConflictDoNothing()
+          .returning({ id: jobPost.id })
 
         existing.add(post.key)
+        if (created.length === 0) continue
+
         summary.added += 1
+        fresh.push({
+          title: parsed.title,
+          company: parsed.company,
+          location: parsed.location,
+          url: post.url,
+          deadlineAt: parsed.deadlineAt,
+          score: match.score,
+        })
       }
+    }
+
+    // A failed announcement must not fail the scan: the postings are stored,
+    // and the app already shows them.
+    try {
+      await this.reminders.announceNew(fresh)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      this.logger.warn(`New-posting notification skipped: ${message}`)
     }
 
     return summary
