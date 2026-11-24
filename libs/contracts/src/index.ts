@@ -338,7 +338,8 @@ export const jobListQuerySchema = listQuerySchema({
   filterFields: ["title", "company", "channel", "status", "createdAt"],
   dateFields: ["createdAt"],
   sortFields: ["title", "company", "score", "postedAt", "createdAt"],
-  defaultSort: "score",
+  // Newest first, so a scan's findings are the first thing on the list.
+  defaultSort: "createdAt",
 })
 export type JobListQuery = z.output<typeof jobListQuerySchema>
 

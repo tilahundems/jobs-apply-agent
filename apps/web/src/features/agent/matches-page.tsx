@@ -40,7 +40,7 @@ export function MatchesPage() {
   } = matchesSearch.useTableSearch()
   const { data: page } = useSuspenseQuery(jobPageQueryOptions(query))
   const status = rules.find((rule) => rule.field === "status")?.value ?? ""
-  const sort = query.sort ?? "score:desc"
+  const sort = query.sort ?? "createdAt:desc"
 
   const [term, setTerm] = useState(search)
   useEffect(() => setTerm(search), [search])
@@ -67,8 +67,8 @@ export function MatchesPage() {
     <div className="pt-8">
       <h1 className="text-2xl font-semibold tracking-tight">Matches</h1>
       <p className="mt-1.5 max-w-prose text-sm text-muted-foreground">
-        Everything the agent kept, best fit first. The chips under each role are
-        the evidence behind its score.
+        Everything the agent kept, newest scan first. The chips under each role
+        are the evidence behind its score.
       </p>
 
       <div className="mt-6 flex flex-col gap-3 border-b border-border/60 pb-4 sm:flex-row sm:items-center">

@@ -7,5 +7,6 @@ import { createTableSearch } from "@/components/table/create-table-search"
 export const matchesSearch = createTableSearch({
   fields: [{ value: "status", label: "Status" }],
   sortFields: ["score", "createdAt"],
-  defaultSort: "score:desc",
+  // A scan's findings belong at the top, where they are seen first.
+  defaultSort: "createdAt:desc",
 })
