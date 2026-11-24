@@ -77,7 +77,7 @@ it("reports what the agent watched, kept, and left silent", () => {
   expect(
     screen.getByRole("heading", { name: "12 postings kept from 3 channels." })
   ).toBeTruthy()
-  expect(screen.getByText("Read these first")).toBeTruthy()
+  expect(screen.getByText("Newest from the channels")).toBeTruthy()
   expect(screen.getByText("Senior Frontend Engineer")).toBeTruthy()
   expect(screen.getByText("React")).toBeTruthy()
   expect(screen.getByText("2 of 3 produced nothing kept.")).toBeTruthy()

@@ -244,7 +244,8 @@ export class JobsService {
           createdAt: true,
         },
         where,
-        orderBy: [desc(jobPost.score), desc(jobPost.createdAt)],
+        // The console opens on what the last scan found, not on the best score.
+        orderBy: [desc(jobPost.createdAt), desc(jobPost.score)],
         limit: 5,
       }),
     ])

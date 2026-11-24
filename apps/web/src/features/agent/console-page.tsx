@@ -100,7 +100,7 @@ export function ConsolePage() {
           <div className="flex items-baseline justify-between gap-4">
             <h2 className="flex items-center gap-2 text-sm font-semibold">
               <SparklesIcon className="size-4 text-muted-foreground" />
-              Read these first
+              Newest from the channels
             </h2>
             <Link
               to="/jobs"
