@@ -11,7 +11,7 @@ import { and, count, desc, eq, like, lt, sql } from "drizzle-orm"
 import { env } from "../env.js"
 import { JobsService } from "./jobs.service.js"
 import { RemindersService } from "./reminders.service.js"
-import { escapeHtml, telegramCall } from "./telegram-api.js"
+import { escapeHtml, telegramCall, telegramChatIds } from "./telegram-api.js"
 
 /** Telegram's own update shape, trimmed to what this bot reads. */
 type TelegramUpdate = {
@@ -213,10 +213,7 @@ export class BotService implements OnModuleDestroy {
    */
   private allowedChats() {
     return new Set(
-      `${env.TELEGRAM_CHAT_ID},${env.TELEGRAM_ALLOWED_CHAT_IDS}`
-        .split(",")
-        .map((id) => id.trim())
-        .filter(Boolean)
+      telegramChatIds(env.TELEGRAM_CHAT_ID, env.TELEGRAM_ALLOWED_CHAT_IDS)
     )
   }
 

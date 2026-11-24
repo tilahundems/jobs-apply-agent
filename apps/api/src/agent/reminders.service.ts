@@ -12,14 +12,13 @@ import {
   gte,
   inArray,
   isNotNull,
-  isNull,
   lt,
   lte,
   notInArray,
 } from "drizzle-orm"
 import { env } from "../env.js"
 import { apiError } from "../http/api-error.js"
-import { escapeHtml, telegramCall } from "./telegram-api.js"
+import { escapeHtml, telegramCall, telegramChatIds } from "./telegram-api.js"
 
 const DAY_MS = 86_400_000
 /** Postings the user has already dealt with need no warning. */
@@ -113,15 +112,16 @@ export class RemindersService {
   private running = false
 
   /**
-   * Warnings go to one chat only. TELEGRAM_CHAT_ID may hold a list where the
-   * first id is the owner, so a typo there cannot break delivery.
+   * Everyone a message goes to: the owner first, then any extra ids in
+   * TELEGRAM_ALLOWED_CHAT_IDS. A friend who has sent the bot a message and
+   * whose id is listed there gets the same closing-date warnings.
    */
-  private get chatId() {
-    return env.TELEGRAM_CHAT_ID.split(",")[0]?.trim() ?? ""
+  private get recipients() {
+    return telegramChatIds(env.TELEGRAM_CHAT_ID, env.TELEGRAM_ALLOWED_CHAT_IDS)
   }
 
   get enabled() {
-    return Boolean(env.TELEGRAM_BOT_TOKEN && this.chatId)
+    return Boolean(env.TELEGRAM_BOT_TOKEN && this.recipients.length > 0)
   }
 
   async status() {
@@ -210,6 +210,22 @@ export class RemindersService {
     return await this.run(true)
   }
 
+  /**
+   * The postings each chat has already been warned about. Rows written before
+   * reminders were tracked per chat belong to the owner, who is listed first.
+   */
+  private async announced() {
+    const owner = this.recipients[0] ?? ""
+    const rows = await db
+      .select({
+        jobPostId: deadlineReminder.jobPostId,
+        chatId: deadlineReminder.chatId,
+      })
+      .from(deadlineReminder)
+      .where(tenantWhere(deadlineReminder.organizationId))
+    return new Set(rows.map((row) => `${row.jobPostId}|${row.chatId || owner}`))
+  }
+
   /** Messages every open posting that closes inside the reminder window. */
   async run(force = false) {
     if (!this.enabled) return { sent: 0, enabled: false }
@@ -231,44 +247,50 @@ export class RemindersService {
           deadlineAt: jobPost.deadlineAt,
         })
         .from(jobPost)
-        .leftJoin(deadlineReminder, eq(deadlineReminder.jobPostId, jobPost.id))
-        .where(
-          force
-            ? this.window(now, horizon)
-            : and(this.window(now, horizon), isNull(deadlineReminder.id))
-        )
+        .where(this.window(now, horizon))
+
+      const chats = this.recipients
+      const announced = force ? new Set<string>() : await this.announced()
 
       let sent = 0
       for (const row of rows) {
         const deadlineAt = row.deadlineAt
         if (!deadlineAt) continue
         const daysLeft = daysLeftUntil(deadlineAt, now)
-        let messageId: number | null = null
-        try {
-          messageId = await this.send(formatReminder(row, daysLeft))
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error)
-          this.logger.warn(`Reminder skipped for ${row.id}: ${message}`)
-          continue
+        for (const chatId of chats) {
+          if (announced.has(`${row.id}|${chatId}`)) continue
+          let messageId: number | null = null
+          try {
+            messageId = await this.sendTo(chatId, formatReminder(row, daysLeft))
+          } catch (error) {
+            const message =
+              error instanceof Error ? error.message : String(error)
+            this.logger.warn(
+              `Reminder skipped for ${row.id} in chat ${chatId}: ${message}`
+            )
+            continue
+          }
+          await db
+            .insert(deadlineReminder)
+            .values({
+              id: crypto.randomUUID(),
+              organizationId: row.organizationId,
+              jobPostId: row.id,
+              chatId,
+              daysLeft,
+              messageId,
+            })
+            // A resend replaces the message the chat holds, so keep the new id.
+            .onConflictDoUpdate({
+              target: [
+                deadlineReminder.organizationId,
+                deadlineReminder.jobPostId,
+                deadlineReminder.chatId,
+              ],
+              set: { messageId, daysLeft, sentAt: new Date() },
+            })
+          sent += 1
         }
-        await db
-          .insert(deadlineReminder)
-          .values({
-            id: crypto.randomUUID(),
-            organizationId: row.organizationId,
-            jobPostId: row.id,
-            daysLeft,
-            messageId,
-          })
-          // A resend replaces the message the chat holds, so keep the new id.
-          .onConflictDoUpdate({
-            target: [
-              deadlineReminder.organizationId,
-              deadlineReminder.jobPostId,
-            ],
-            set: { messageId, daysLeft, sentAt: new Date() },
-          })
-        sent += 1
       }
 
       if (sent) this.logger.log(`Sent ${sent} closing-date reminder(s).`)
@@ -288,6 +310,7 @@ export class RemindersService {
     const rows = await db
       .select({
         id: deadlineReminder.id,
+        chatId: deadlineReminder.chatId,
         messageId: deadlineReminder.messageId,
       })
       .from(deadlineReminder)
@@ -300,10 +323,11 @@ export class RemindersService {
       )
     if (rows.length === 0) return { cleared: 0 }
 
+    const owner = this.recipients[0] ?? ""
     for (const row of rows) {
       if (row.messageId === null) continue
       try {
-        await this.deleteMessage(row.messageId)
+        await this.deleteMessage(row.chatId || owner, row.messageId)
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
         this.logger.warn(`Earlier reminder kept: ${message}`)
@@ -319,9 +343,26 @@ export class RemindersService {
     return { cleared: rows.length }
   }
 
+  /**
+   * The same message to every chat. One blocked or removed chat must not stop
+   * the others, so each delivery is reported on its own.
+   */
   private async send(text: string) {
+    const sent: { chatId: string; messageId: number | null }[] = []
+    for (const chatId of this.recipients) {
+      try {
+        sent.push({ chatId, messageId: await this.sendTo(chatId, text) })
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        this.logger.warn(`Could not message chat ${chatId}: ${message}`)
+      }
+    }
+    return sent
+  }
+
+  private async sendTo(chatId: string, text: string) {
     const body = await telegramCall("sendMessage", {
-      chat_id: this.chatId,
+      chat_id: chatId,
       text: text.slice(0, 4_000),
       parse_mode: "HTML",
     })
@@ -330,9 +371,9 @@ export class RemindersService {
     return typeof messageId === "number" ? messageId : null
   }
 
-  private async deleteMessage(messageId: number) {
+  private async deleteMessage(chatId: string, messageId: number) {
     await telegramCall("deleteMessage", {
-      chat_id: this.chatId,
+      chat_id: chatId,
       message_id: messageId,
     })
   }

@@ -50,6 +50,23 @@ export async function telegramCall(
   }
 }
 
+/**
+ * Chat ids from comma-separated env values: trimmed, unique, owner first. Both
+ * bots read the same two variables, so the owner's chat always leads.
+ */
+export function telegramChatIds(...lists: string[]) {
+  return [
+    ...new Set(
+      lists.flatMap((list) =>
+        list
+          .split(",")
+          .map((id) => id.trim())
+          .filter(Boolean)
+      )
+    ),
+  ]
+}
+
 /** Untrusted channel text must never reach Telegram's HTML parser raw. */
 export const escapeHtml = (value: string) =>
   value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")

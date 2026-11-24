@@ -197,6 +197,8 @@ export const deadlineReminder = sqliteTable(
       .references(() => jobPost.id, { onDelete: "cascade" }),
     /** Whole days left when the message went out; 0 means "closing today". */
     daysLeft: integer("days_left").notNull(),
+    /** Which chat holds the message; one row per chat that was warned. */
+    chatId: text("chat_id").notNull().default(""),
     /** Telegram's id for the sent message, so it can be deleted later. */
     messageId: integer("message_id"),
     sentAt: integer("sent_at", { mode: "timestamp" })
@@ -204,9 +206,10 @@ export const deadlineReminder = sqliteTable(
       .$defaultFn(() => new Date()),
   },
   (table) => [
-    uniqueIndex("deadline_reminder_job_uidx").on(
+    uniqueIndex("deadline_reminder_job_chat_uidx").on(
       table.organizationId,
-      table.jobPostId
+      table.jobPostId,
+      table.chatId
     ),
   ]
 )

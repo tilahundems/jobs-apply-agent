@@ -5,7 +5,7 @@ import {
   formatNewJobs,
   formatReminder,
 } from "../src/agent/reminders.service.js"
-import { telegramDetail } from "../src/agent/telegram-api.js"
+import { telegramChatIds, telegramDetail } from "../src/agent/telegram-api.js"
 
 const now = new Date("2026-11-20T06:00:00Z")
 
@@ -99,6 +99,18 @@ test("keeps a large scan to one readable message", () => {
   assert.match(text, /10\. <b>Role 10<\/b>/)
   assert.doesNotMatch(text, /Role 11/)
   assert.match(text, /…and 3 more in the app\./)
+})
+
+test("sends to the owner first, then everyone else once", () => {
+  assert.deepEqual(telegramChatIds("111, 222", "333"), ["111", "222", "333"])
+  // A friend who is already in the owner's list is not messaged twice.
+  assert.deepEqual(telegramChatIds("111,222", "222, 333"), [
+    "111",
+    "222",
+    "333",
+  ])
+  // Blank values, the default, leave nobody to message.
+  assert.deepEqual(telegramChatIds("", ""), [])
 })
 
 test("surfaces Telegram's own reason instead of a generic failure", () => {
