@@ -36,8 +36,15 @@ export class AgentScheduler implements OnModuleInit, OnModuleDestroy {
     const minutes = env.AGENT_INGEST_MINUTES
     if (minutes > 0) {
       this.logger.log(`Scanning Telegram channels every ${minutes} minute(s).`)
+      // Scan once at start: a restart should not cost a whole interval.
+      void this.tick()
       this.timer = setInterval(() => void this.tick(), minutes * 60_000)
       this.timer.unref?.()
+    } else {
+      // Silence here used to read as "slow", when scanning was simply off.
+      this.logger.warn(
+        "Automatic scanning is off (AGENT_INGEST_MINUTES=0). Set it to a number of minutes, then restart, to find postings without pressing Scan."
+      )
     }
 
     const reminderMinutes = env.DEADLINE_CHECK_MINUTES
