@@ -30,9 +30,25 @@ tenant terms on most boards and produce applications recruiters can spot.
 | Variable | Meaning |
 | --- | --- |
 | `AGENT_INGEST_MINUTES` | Minutes between automatic channel scans. `0` (default) disables the loop and leaves scanning to the button. |
+| `CRON_SECRET` | Shared secret for `POST /api/v1/cron/scan`, which starts one scan and answers with its summary. An outside scheduler sends it as the `x-cron-secret` header. Empty disables the endpoint. |
 | `AI_PROVIDERS` | Ordered fallback chain, e.g. `groq,openrouter,gemini`. Each provider with a key is tried in turn until one answers; the error lists every attempt. No key configured means preparing an application returns a clear error instead of failing silently. |
 | `GROQ_API_KEY` / `OPENROUTER_API_KEY` / `GEMINI_API_KEY` | Keys for the providers in the chain. `AI_MODEL`, `OPENROUTER_MODEL`, and `GEMINI_MODEL` choose the model per provider; each has a sensible default. |
 | `LLM_API_KEY` | Legacy single endpoint for any OpenAI-compatible provider. When set it runs ahead of `AI_PROVIDERS`, with `LLM_BASE_URL` (default `https://api.openai.com/v1`) and `LLM_MODEL` (default `gpt-4o-mini`). |
+
+#### Scanning on a free host
+
+A free instance sleeps when nothing calls it, and a sleeping process runs no
+`setInterval`, so `AGENT_INGEST_MINUTES` alone will miss postings there. Set
+`CRON_SECRET` and point any free scheduler at the scan endpoint every 10 minutes;
+the request wakes the instance, scans the channels and announces anything new:
+
+```
+curl -fsS -X POST https://<host>/api/v1/cron/scan -H "x-cron-secret: <secret>"
+```
+
+`.github/workflows/scan.yml` does this on a cron schedule once the `API_URL` and
+`CRON_SECRET` repository secrets exist. GitHub's schedule can lag, so a
+free service such as cron-job.org is a closer alternative.
 
 ### Limits worth knowing
 

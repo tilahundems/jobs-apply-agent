@@ -1,0 +1,19 @@
+name: Scan channels
+on:
+  schedule:
+    # GitHub's schedule can lag by several minutes; a 10-minute request is a
+    # fresh-enough feed without spending the free minutes on noise.
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+concurrency:
+  group: scan-channels
+  cancel-in-progress: false
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      # Also wakes a sleeping free instance, which runs no timers of its own.
+      - run: |
+          curl -fsS --max-time 180 --retry 2 --retry-delay 10 \
+            -X POST "${{ secrets.API_URL }}/api/v1/cron/scan" \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}"

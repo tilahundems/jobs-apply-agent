@@ -45,6 +45,11 @@ const schema = z.object({
   DEADLINE_REMINDER_DAYS: z.coerce.number().int().min(0).max(30).default(3),
   /** Minutes between closing-date checks. 0 disables the background loop. */
   DEADLINE_CHECK_MINUTES: z.coerce.number().int().min(0).default(30),
+  /**
+   * Shared secret an outside scheduler sends to POST /api/v1/cron/scan. Empty
+   * leaves that endpoint switched off.
+   */
+  CRON_SECRET: z.string().default(""),
 })
 
 export const env = {
