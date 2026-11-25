@@ -417,19 +417,30 @@ export class BotService implements OnModuleDestroy {
 
   /**
    * Puts the web app behind the persistent menu button beside the chat box, so
-   * the full console is one tap away from any chat.
+   * the full console is one tap away from any chat. A chat's own button wins
+   * over the default one, so a button pinned to an old tunnel address would
+   * keep sending people to a dead page until it is set again here.
    */
   private async publishMenuButton() {
     const url = env.TELEGRAM_WEBAPP_URL
     if (!url) return
-    await this.call("setChatMenuButton", {
-      menu_button: {
-        type: "web_app",
-        text: "Open app",
-        web_app: { url },
-      },
-    }).catch((error) =>
-      this.logger.warn(`Menu button unchanged: ${describe(error)}`)
+    const menu_button = {
+      type: "web_app",
+      text: "Open app",
+      web_app: { url },
+    }
+    const chats = [undefined, ...[...this.allowedChats()].map(Number)]
+    await Promise.all(
+      chats.map((chatId) =>
+        this.call(
+          "setChatMenuButton",
+          chatId === undefined
+            ? { menu_button }
+            : { chat_id: chatId, menu_button }
+        ).catch((error) =>
+          this.logger.warn(`Menu button unchanged: ${describe(error)}`)
+        )
+      )
     )
   }
 

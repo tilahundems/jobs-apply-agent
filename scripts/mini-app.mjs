@@ -18,7 +18,10 @@ const binary = resolve(root, ".tools/cloudflared.exe")
 
 process.loadEnvFile(envPath)
 const token = process.env.TELEGRAM_AGENT_BOT_TOKEN
-const ownerChat = (process.env.TELEGRAM_CHAT_ID ?? "").split(",")[0]
+const ownerChats = (process.env.TELEGRAM_CHAT_ID ?? "")
+  .split(",")
+  .map((chat) => chat.trim())
+  .filter(Boolean)
 
 if (!token) {
   console.error("TELEGRAM_AGENT_BOT_TOKEN is missing from .env")
@@ -33,26 +36,31 @@ const saveUrl = (url) => {
   writeFileSync(envPath, next)
 }
 
-/** The button Telegram shows beside the message box, for the owner and default. */
+/** The button Telegram shows beside the message box, for every chat and the default. */
 async function pointButtonAt(url) {
   const call = async (method, payload) => {
-    const response = await fetch(`https://api.telegram.org/bot${token}/${method}`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(payload),
-    })
+    const response = await fetch(
+      `https://api.telegram.org/bot${token}/${method}`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(payload),
+      }
+    )
     return await response.json()
   }
 
   const button = { type: "web_app", text: "Open app", web_app: { url } }
+  // A chat's own button overrides the default one, and an older run left a
+  // button pinned to a dead address, so every chat is pointed at the new URL.
   const results = await Promise.all([
     call("setChatMenuButton", { menu_button: button }),
-    ownerChat
-      ? call("setChatMenuButton", {
-          chat_id: Number(ownerChat),
-          menu_button: button,
-        })
-      : Promise.resolve({ ok: true }),
+    ...ownerChats.map((chat) =>
+      call("setChatMenuButton", {
+        chat_id: Number(chat),
+        menu_button: button,
+      })
+    ),
   ])
   const failed = results.filter((result) => !result.ok)
   if (failed.length > 0) {
@@ -88,7 +96,8 @@ const scan = async (chunk) => {
     ready = Boolean(response?.ok) && type.includes("text/html")
     if (!ready) await new Promise((resolve) => setTimeout(resolve, 2_000))
   }
-  if (!ready) console.warn("Tunnel address did not answer yet; using it anyway.")
+  if (!ready)
+    console.warn("Tunnel address did not answer yet; using it anyway.")
   saveUrl(url)
   console.log(`\nMini app: ${url}`)
   pointButtonAt(url).then(() => console.log("Telegram button updated."))
