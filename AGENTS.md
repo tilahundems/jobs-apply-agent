@@ -15,6 +15,10 @@ For a new product feature or demo replacement, follow the file map and adoption 
 - List and detail pages: Follow [the main and detail page UI guide](apps/web/src/components/detail-page.md). Projects is the server-paginated list reference.
 - Optional features: Mark references to an optional feature as described in [the new-product guide](docs/new-product.md), which also holds the E2E adoption checklist.
 
+## Commits and branches
+
+Start every change on its own branch named `agent/<short-topic>` (create it from an up-to-date `main`) and commit there. Never commit directly to `main`, and never merge, rebase onto `main`, or push to `main` on your own: leave the branch pushed for the owner to review, then wait for their verdict. If they ask for more work on a branch under review, add commits there rather than starting a new one.
+
 ## Verification
 
 Choose the smallest check that proves changed behavior. Use the real HTTP boundary for API validation and guards, and an isolated database for persistence or permission invariants. Report what ran, what passed, and any limits; documentation-only edits need link and diff checks, not an app build.
