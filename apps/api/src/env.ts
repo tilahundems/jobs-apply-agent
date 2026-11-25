@@ -15,6 +15,19 @@ const schema = z.object({
   /** Minutes between automatic channel scans. 0 disables the background loop. */
   AGENT_INGEST_MINUTES: z.coerce.number().int().min(0).default(0),
   /**
+   * How many fresh postings one scan may write a tailored CV and cover letter
+   * for, so an application is waiting to be reviewed instead of costing a
+   * click per posting. 0 turns auto-preparation off.
+   */
+  AGENT_AUTO_PREPARE_LIMIT: z.coerce.number().int().min(0).max(20).default(3),
+  /** Only auto-prepare fresh postings at or above this match score. */
+  AGENT_AUTO_PREPARE_MIN_SCORE: z.coerce
+    .number()
+    .int()
+    .min(0)
+    .max(100)
+    .default(0),
+  /**
    * Telegram bot used for closing-date warnings. Create one by messaging
    * @BotFather, then send it a message and read the chat id from
    * https://api.telegram.org/bot<token>/getUpdates. Empty disables sending.

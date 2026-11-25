@@ -5,6 +5,7 @@ import {
   type CandidateProfile,
   candidateProfile,
   db,
+  type JobPost,
   jobPost,
   requiredOrganizationId,
   tenantWhere,
@@ -16,6 +17,7 @@ import {
   count,
   desc,
   eq,
+  gte,
   inArray,
   lt,
   max,
@@ -31,6 +33,7 @@ import {
   paginate,
   textFilter,
 } from "../common/list-query.js"
+import { env } from "../env.js"
 import { apiError } from "../http/api-error.js"
 import { markdownToDocx } from "./docx.js"
 import { scoreJob } from "./match.js"
@@ -47,6 +50,8 @@ export type IngestSummary = {
   excluded: number
   /** Postings dropped or skipped because their deadline has passed. */
   expired: number
+  /** Fresh postings this scan wrote a tailored CV and cover letter for. */
+  prepared: number
   warnings: string[]
 }
 
@@ -360,6 +365,23 @@ export class JobsService {
       ["tailoredCv", "coverLetter", "status"]
     )
 
+    await this.writeTailoring(job, profile, userId)
+
+    return this.findOne(id, conditions)
+  }
+
+  /**
+   * Writes the documents and marks the posting prepared. `actorId` is null for
+   * a scan, which has no session behind it.
+   */
+  private async writeTailoring(
+    job: Pick<
+      JobPost,
+      "id" | "title" | "company" | "location" | "url" | "rawText"
+    >,
+    profile: CandidateProfile,
+    actorId: string | null
+  ) {
     const tailoring = await tailorApplication(profile, job)
 
     await db
@@ -373,15 +395,58 @@ export class JobsService {
       .where(and(tenantWhere(jobPost.organizationId), eq(jobPost.id, job.id)))
 
     await this.audit?.record({
-      actorId: userId,
-      actorType: "USER",
+      actorId,
+      actorType: actorId ? "USER" : "SYSTEM",
       action: "JOB_APPLICATION_PREPARED",
       resourceType: "job_post",
       resourceId: job.id,
       newValues: { status: "prepared" },
     })
+  }
 
-    return this.findOne(id, conditions)
+  /**
+   * Prepares the best of a scan's fresh postings, so an application is ready to
+   * review instead of costing a click each time. Sending it is not this
+   * service's job and nothing here submits anything. A posting that fails to
+   * prepare is reported and the scan carries on.
+   */
+  private async autoPrepare(
+    ids: string[],
+    profile: CandidateProfile
+  ): Promise<number> {
+    if (env.AGENT_AUTO_PREPARE_LIMIT === 0 || ids.length === 0) return 0
+
+    const candidates = await db.query.jobPost.findMany({
+      columns: jobColumns,
+      where: and(
+        tenantWhere(jobPost.organizationId),
+        inArray(jobPost.id, ids),
+        eq(jobPost.status, "new"),
+        eq(jobPost.blocked, false),
+        gte(jobPost.score, env.AGENT_AUTO_PREPARE_MIN_SCORE)
+      ),
+      orderBy: [desc(jobPost.score)],
+      limit: env.AGENT_AUTO_PREPARE_LIMIT,
+    })
+
+    let prepared = 0
+    for (const job of candidates) {
+      try {
+        await this.writeTailoring(job, profile, null)
+        prepared += 1
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        this.logger.warn(
+          `Auto-prepare skipped "${job.title ?? job.id}": ${message}`
+        )
+      }
+    }
+
+    if (prepared > 0) {
+      this.logger.log(`Prepared ${prepared} application(s) for review.`)
+    }
+
+    return prepared
   }
 
   async cvDocx(id: string, conditions: SQL): Promise<Buffer> {
@@ -421,6 +486,7 @@ export class JobsService {
       belowThreshold: 0,
       excluded: 0,
       expired: 0,
+      prepared: 0,
       warnings: [],
     }
 
@@ -442,6 +508,8 @@ export class JobsService {
 
     // Announcements are collected here because only the scan knows what is new.
     const fresh: NewPosting[] = []
+    // Documents are written after the channels are read, in one pass.
+    const freshIds: string[] = []
 
     const existing = new Set(
       (
@@ -510,9 +578,11 @@ export class JobsService {
           .returning({ id: jobPost.id })
 
         existing.add(post.key)
-        if (created.length === 0) continue
+        const inserted = created[0]
+        if (!inserted) continue
 
         summary.added += 1
+        freshIds.push(inserted.id)
         fresh.push({
           title: parsed.title,
           company: parsed.company,
@@ -522,6 +592,15 @@ export class JobsService {
           score: match.score,
         })
       }
+    }
+
+    // Prepared before announcing, so a posting arrives with its documents
+    // already written. A failure here stops neither step.
+    try {
+      summary.prepared = await this.autoPrepare(freshIds, profile)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      this.logger.warn(`Auto-prepare skipped: ${message}`)
     }
 
     // A failed announcement must not fail the scan: the postings are stored,

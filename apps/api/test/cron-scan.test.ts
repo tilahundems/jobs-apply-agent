@@ -15,6 +15,7 @@ const summary: IngestSummary = {
   belowThreshold: 4,
   excluded: 1,
   expired: 0,
+  prepared: 0,
   warnings: [],
 }
 
