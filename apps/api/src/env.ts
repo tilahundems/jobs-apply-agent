@@ -28,6 +28,12 @@ const schema = z.object({
     .max(100)
     .default(0),
   /**
+   * How many Afriwork vacancies one scan reads. Afriwork is a real job board
+   * with its own application page, so it needs no account here; 0 turns the
+   * source off.
+   */
+  AGENT_AFRIWORK_JOBS: z.coerce.number().int().min(0).max(100).default(20),
+  /**
    * Telegram bot used for closing-date warnings. Create one by messaging
    * @BotFather, then send it a message and read the chat id from
    * https://api.telegram.org/bot<token>/getUpdates. Empty disables sending.

@@ -35,9 +35,14 @@ import {
 } from "../common/list-query.js"
 import { env } from "../env.js"
 import { apiError } from "../http/api-error.js"
+import {
+  afriworkJobUrl,
+  afriworkText,
+  fetchAfriworkJobs,
+} from "./afriwork-source.js"
 import { markdownToDocx } from "./docx.js"
 import { scoreJob } from "./match.js"
-import { isDeadlinePassed, parseJob } from "./parse.js"
+import { isDeadlinePassed, type ParsedJob, parseJob } from "./parse.js"
 import { type NewPosting, RemindersService } from "./reminders.service.js"
 import { tailorApplication } from "./tailor.js"
 import { fetchChannelPosts } from "./telegram-source.js"
@@ -472,7 +477,8 @@ export class JobsService {
     }
 
     const channels = profile.sources.channels
-    if (channels.length === 0) {
+    const afriworkLimit = env.AGENT_AFRIWORK_JOBS
+    if (channels.length === 0 && afriworkLimit === 0) {
       apiError(
         HttpStatus.BAD_REQUEST,
         "Add at least one Telegram channel to your profile."
@@ -520,6 +526,81 @@ export class JobsService {
       ).map((row) => row.externalKey)
     )
 
+    const store = async (
+      post: {
+        key: string
+        channel: string
+        messageId: number | null
+        postedAt: Date | null
+        text: string
+        url: string
+      },
+      parsed: ParsedJob
+    ) => {
+      summary.fetched += 1
+      if (existing.has(post.key)) return
+
+      if (isDeadlinePassed(parsed.deadlineAt)) {
+        summary.expired += 1
+        return
+      }
+
+      const match = scoreJob(post.text, parsed, {
+        skills: profile.skills,
+        preferences: profile.preferences,
+      })
+
+      if (match.blocked) {
+        summary.excluded += 1
+        return
+      }
+
+      if (match.score < profile.preferences.minMatchScore) {
+        summary.belowThreshold += 1
+        return
+      }
+
+      const created = await db
+        .insert(jobPost)
+        .values({
+          id: crypto.randomUUID(),
+          organizationId: requiredOrganizationId(),
+          externalKey: post.key,
+          channel: post.channel,
+          messageId: post.messageId,
+          postedAt: post.postedAt,
+          deadlineAt: parsed.deadlineAt,
+          title: parsed.title,
+          company: parsed.company,
+          location: parsed.location,
+          url: post.url,
+          rawText: post.text,
+          score: match.score,
+          blocked: false,
+          status: "new",
+          reasons: match.reasons,
+          gaps: match.gaps,
+          matchedSkills: match.matchedSkills,
+        })
+        .onConflictDoNothing()
+        .returning({ id: jobPost.id })
+
+      existing.add(post.key)
+      const inserted = created[0]
+      if (!inserted) return
+
+      summary.added += 1
+      freshIds.push(inserted.id)
+      fresh.push({
+        title: parsed.title,
+        company: parsed.company,
+        location: parsed.location,
+        url: post.url,
+        deadlineAt: parsed.deadlineAt,
+        score: match.score,
+      })
+    }
+
     for (const channel of channels) {
       const result = await fetchChannelPosts(
         channel,
@@ -528,69 +609,40 @@ export class JobsService {
       summary.warnings.push(...result.warnings)
 
       for (const post of result.posts) {
-        summary.fetched += 1
-        if (existing.has(post.key)) continue
+        await store(post, parseJob(post.text))
+      }
+    }
 
-        const parsed = parseJob(post.text)
-        if (isDeadlinePassed(parsed.deadlineAt)) {
-          summary.expired += 1
-          continue
-        }
+    // Afriwork is a job board rather than a channel: its pages carry the title,
+    // employer, place and closing day as fields, so they are not re-parsed.
+    if (afriworkLimit > 0) {
+      const afriwork = await fetchAfriworkJobs(
+        afriworkLimit,
+        profile.preferences.titles ?? []
+      )
+      summary.warnings.push(...afriwork.warnings)
+      if (afriwork.warnings.length === 0) summary.channels += 1
 
-        const match = scoreJob(post.text, parsed, {
-          skills: profile.skills,
-          preferences: profile.preferences,
-        })
-
-        if (match.blocked) {
-          summary.excluded += 1
-          continue
-        }
-
-        if (match.score < profile.preferences.minMatchScore) {
-          summary.belowThreshold += 1
-          continue
-        }
-
-        const created = await db
-          .insert(jobPost)
-          .values({
-            id: crypto.randomUUID(),
-            organizationId: requiredOrganizationId(),
-            externalKey: post.key,
-            channel: post.channel,
-            messageId: post.messageId,
-            postedAt: post.postedAt,
-            deadlineAt: parsed.deadlineAt,
-            title: parsed.title,
-            company: parsed.company,
-            location: parsed.location,
-            url: post.url,
-            rawText: post.text,
-            score: match.score,
-            blocked: false,
-            status: "new",
-            reasons: match.reasons,
-            gaps: match.gaps,
-            matchedSkills: match.matchedSkills,
-          })
-          .onConflictDoNothing()
-          .returning({ id: jobPost.id })
-
-        existing.add(post.key)
-        const inserted = created[0]
-        if (!inserted) continue
-
-        summary.added += 1
-        freshIds.push(inserted.id)
-        fresh.push({
-          title: parsed.title,
-          company: parsed.company,
-          location: parsed.location,
-          url: post.url,
-          deadlineAt: parsed.deadlineAt,
-          score: match.score,
-        })
+      for (const job of afriwork.jobs) {
+        await store(
+          {
+            key: `afriwork:${job.id}`,
+            channel: "afriwork",
+            messageId: null,
+            postedAt: job.postedAt,
+            text: afriworkText(job),
+            url: afriworkJobUrl(job.id),
+          },
+          {
+            title: job.title,
+            company: job.company,
+            location: job.location,
+            deadlineAt: job.deadline ? new Date(job.deadline) : null,
+            links: [afriworkJobUrl(job.id)],
+            emails: [],
+            isProbablyJob: true,
+          }
+        )
       }
     }
 
